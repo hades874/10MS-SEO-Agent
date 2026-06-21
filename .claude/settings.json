@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(npm approve-scripts --allow-scripts-pending 2>&1)",
+      "PowerShell(npm approve-scripts esbuild 2>&1)",
+      "PowerShell(npm approve-scripts sharp 2>&1)",
+      "PowerShell(npm install csv-parse 2>&1)"
+    ]
+  }
+}

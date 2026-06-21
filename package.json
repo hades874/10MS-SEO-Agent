@@ -1,0 +1,52 @@
+{
+  "name": "tenms-seo-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "check": "tsx scripts/check-env.ts",
+    "db:init": "tsx scripts/init-db.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "import:csv": "tsx scripts/import-csv.ts",
+    "backfill:keywords": "tsx scripts/backfill-keywords.ts",
+    "seed:style": "tsx scripts/mine-style.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^3.0.83",
+    "@openrouter/ai-sdk-provider": "^2.9.1",
+    "ai": "^6.0.208",
+    "csv-parse": "^7.0.0",
+    "drizzle-orm": "^0.45.2",
+    "next": "^16.2.9",
+    "postgres": "^3.4.9",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vercel/config": "^0.5.3",
+    "autoprefixer": "^10.5.0",
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.10",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^3.4.19",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  },
+  "allowScripts": {
+    "esbuild@0.18.20": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.1": true,
+    "sharp@0.34.5": true
+  }
+}
