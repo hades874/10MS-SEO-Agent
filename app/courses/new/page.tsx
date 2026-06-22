@@ -67,7 +67,7 @@ export default function NewCoursePage() {
   async function handleSave(publish: boolean) {
     if (!input || !copy || !schema) return;
     setSaving(true);
-    const res = await saveCourse(input, copy, schema, score ?? 0, publish);
+    const res = await saveCourse(input, copy, publish);
     setSaving(false);
     if (res.ok && res.courseId) router.push(`/courses/${res.courseId}`);
     else setError(res.error ?? "Save failed");

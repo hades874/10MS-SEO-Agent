@@ -58,6 +58,26 @@ export function embedModel(): EmbeddingModel {
   return google().textEmbeddingModel(EMBED_MODEL_ID);
 }
 
+/**
+ * Provider options for chat calls. Disables Gemini "thinking" on free-tier
+ * generation: reasoning tokens are billed/counted as OUTPUT and against the
+ * tokens-per-minute cap, and our short structured SEO fields don't need them.
+ * (flash-lite already defaults to no thinking; budget 0 is a safe no-op there.)
+ * Returns undefined for OpenRouter — leave its provider defaults alone.
+ */
+export function chatProviderOptions() {
+  if (PROVIDER === "openrouter") return undefined;
+  return { google: { thinkingConfig: { thinkingBudget: 0 } } } as const;
+}
+
+/** Gemini model + Google Search grounding tool, for AI-search visibility checks. */
+export function googleSearchModel(): LanguageModel {
+  return google()(DRAFT_MODEL_ID);
+}
+export function googleSearchTool() {
+  return google().tools.googleSearch({});
+}
+
 /** Chat (generation/tagging) is configured if either provider key is present. */
 export function isAiConfigured() {
   return Boolean(GOOGLE_KEY || OPENROUTER_KEY);

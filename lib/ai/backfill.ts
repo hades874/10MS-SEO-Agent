@@ -1,6 +1,6 @@
 import { generateObject } from "ai";
 import { z } from "zod";
-import { tagModel } from "./models";
+import { tagModel, chatProviderOptions } from "./models";
 
 const kwSchema = z.object({
   keywords: z
@@ -25,6 +25,7 @@ export async function backfillKeywords(course: {
     model: tagModel(),
     schema: kwSchema,
     maxRetries: 0, // let the caller's quota-aware backoff handle rate limits
+    providerOptions: chatProviderOptions(),
     prompt: `Generate 3–5 concise SEO keywords for this 10 Minute School course page. Mix Bangla and English/Banglish terms as students actually search. Use ONLY the given facts; do not invent. Each keyword ≤ 50 characters.
 
 Course name: ${course.name}

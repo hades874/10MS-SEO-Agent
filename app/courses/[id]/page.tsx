@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getCourseDetail } from "@/lib/queries";
+import { getCourseDetail, getTracking, getCourseVersions } from "@/lib/queries";
 import { ScoreBadge } from "@/components/ScoreBadge";
+import { CompetitorPanel } from "@/components/CompetitorPanel";
+import { TrackingPanel } from "@/components/TrackingPanel";
+import { SeoEditor } from "@/components/SeoEditor";
+import { VersionHistory } from "@/components/VersionHistory";
+import { ExportPanel } from "@/components/ExportPanel";
+import type { GeneratedCopy } from "@/lib/generate/types";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +23,27 @@ export default async function CourseDetail({
   const data = await getCourseDetail(courseId);
   if (!data) notFound();
   const { course, record } = data;
+  const [tracking, versions] = await Promise.all([
+    getTracking(courseId),
+    getCourseVersions(courseId),
+  ]);
+
+  const editorInitial: GeneratedCopy | null = record
+    ? {
+        metaTitleBn: record.metaTitleBn ?? "",
+        metaTitleEn: record.metaTitleEn ?? "",
+        metaDescBn: record.metaDescBn ?? "",
+        metaDescEn: record.metaDescEn ?? "",
+        keywords: record.keywords ?? [],
+        ogTitle: record.ogTitle ?? "",
+        ogDescription: record.ogDescription ?? "",
+        ogImageAlt: record.ogImageAlt ?? "",
+        imageNameThumb: record.imageNameThumb ?? "",
+        imageNameSqr: record.imageNameSqr ?? "",
+        imageAltThumb: record.imageAltThumb ?? "",
+        imageAltSqr: record.imageAltSqr ?? "",
+      }
+    : null;
 
   return (
     <div className="max-w-3xl">
@@ -86,6 +113,56 @@ export default async function CourseDetail({
               {JSON.stringify(record.schemaJsonld, null, 2)}
             </pre>
           </Section>
+
+          <TrackingPanel
+            courseId={course.id}
+            hasKeywords={(record.keywords ?? []).length > 0}
+            initialRanks={tracking.ranks.map((r) => ({
+              query: r.query,
+              position: r.position,
+              checkedAt: r.checkedAt,
+            }))}
+            initialAivis={tracking.aivis.map((a) => ({
+              engine: a.engine,
+              mentioned: a.mentioned,
+              prominence: a.prominence,
+              mentionRate: a.mentionRate,
+              sampledAt: a.sampledAt,
+            }))}
+          />
+
+          <CompetitorPanel
+            defaultKeyword={
+              (record.keywords ?? [])[0] ??
+              [course.level, course.subject, "course"].filter(Boolean).join(" ")
+            }
+            targetKeywords={record.keywords ?? []}
+            ourName={course.name}
+            ourScore={record.validationScore ?? null}
+          />
+
+          {editorInitial && (
+            <SeoEditor courseId={course.id} initial={editorInitial} />
+          )}
+
+          <VersionHistory versions={versions} />
+
+          <ExportPanel
+            data={{
+              name: course.name,
+              productUrl: course.productUrl,
+              metaTitleBn: record.metaTitleBn,
+              metaTitleEn: record.metaTitleEn,
+              metaDescBn: record.metaDescBn,
+              metaDescEn: record.metaDescEn,
+              keywords: record.keywords,
+              ogTitle: record.ogTitle,
+              ogDescription: record.ogDescription,
+              ogImage: record.ogImage,
+              ogImageAlt: record.ogImageAlt,
+              schemaJsonld: record.schemaJsonld,
+            }}
+          />
         </div>
       )}
     </div>

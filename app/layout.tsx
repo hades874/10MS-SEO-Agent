@@ -12,6 +12,7 @@ const nav = [
   { href: "/courses/new", label: "New course" },
   { href: "/keywords", label: "Keywords" },
   { href: "/import", label: "Import" },
+  { href: "/settings", label: "Settings" },
 ];
 
 export default function RootLayout({

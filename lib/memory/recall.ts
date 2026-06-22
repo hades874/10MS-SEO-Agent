@@ -108,7 +108,7 @@ export async function recallExemplars(
 }
 
 /** Load the house-style context (curated rules + top mined phrases) for prompting. */
-export async function loadStyleContext(limitPhrases = 12): Promise<StyleContext> {
+export async function loadStyleContext(limitPhrases = 6): Promise<StyleContext> {
   const db = getDb();
   const rows = await db
     .select()

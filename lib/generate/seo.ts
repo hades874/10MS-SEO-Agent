@@ -1,6 +1,7 @@
 import { generateObject } from "ai";
 import { z } from "zod";
-import { draftModel } from "../ai/models";
+import { draftModel, chatProviderOptions } from "../ai/models";
+import { withQuotaRetry } from "../util/throttle";
 import { visibleLength } from "../util/lang";
 import { LIMITS, scoreRecord, type ScoreResult } from "../score/validate";
 import { buildProductSchema, type ProductSchema } from "./buildSchema";
@@ -78,24 +79,30 @@ export async function generateSeo(
   const maxRepairs = opts.maxRepairs ?? 2;
   const userPrompt = buildUserPrompt(input, exemplars, style);
 
-  let { object: copy } = await generateObject({
-    model: draftModel(),
-    schema: copySchema,
-    system: SYSTEM_PROMPT,
-    prompt: userPrompt,
-  });
+  let { object: copy } = await withQuotaRetry(() =>
+    generateObject({
+      model: draftModel(),
+      schema: copySchema,
+      system: SYSTEM_PROMPT,
+      prompt: userPrompt,
+      providerOptions: chatProviderOptions(),
+    })
+  );
 
   let attempts = 0;
   let violations = findViolations(copy);
   while (violations.length > 0 && attempts < maxRepairs) {
     attempts++;
-    const repair = buildRepairPrompt(violations);
-    const res = await generateObject({
-      model: draftModel(),
-      schema: copySchema,
-      system: SYSTEM_PROMPT,
-      prompt: `${userPrompt}\n\nPREVIOUS ATTEMPT:\n${JSON.stringify(copy, null, 2)}\n\n${repair}`,
-    });
+    // Repair is self-contained (no exemplar/style block) to keep tokens low.
+    const res = await withQuotaRetry(() =>
+      generateObject({
+        model: draftModel(),
+        schema: copySchema,
+        system: SYSTEM_PROMPT,
+        prompt: buildRepairPrompt(copy, violations),
+        providerOptions: chatProviderOptions(),
+      })
+    );
     copy = res.object;
     violations = findViolations(copy);
   }

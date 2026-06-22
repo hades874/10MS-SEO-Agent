@@ -62,15 +62,32 @@ npm run dev                     # http://localhost:3000
 - **New course** (`/courses/new`) — enter a course → generate the bilingual bundle →
   edit with live character-limit counters → Save draft / Publish.
 - **Import** (`/import`) — upload the seed CSV.
-- **Course detail** (`/courses/[id]`) — view the stored SEO record + JSON-LD.
+- **Course detail** (`/courses/[id]`) — view the stored SEO record + JSON-LD, and run
+  **competitor analysis** (BD ed-tech, scored head-to-head against yours).
+- **Keywords** (`/keywords`) — free keyword research via Google Autocomplete (EN + BN),
+  with a–z expansion and a demand-breadth proxy.
+- **Tracking** (on course detail) — "Track now" runs a web SERP rank check + AI-search
+  visibility (does Gemini recommend 10MS?). The 3-week cron re-checks `live` courses.
+
+### Rank-tracking reliability (free vs. keyed)
+
+Web rank uses **DuckDuckGo** by default (free, no key) — but DDG rate-limits scrapers
+under load and isn't Google. For reliable rank data, set a **free** key (no paid plan):
+`SERPER_API_KEY` (google.serper.dev — actual Google results, recommended) or
+`BRAVE_SEARCH_API_KEY`. The provider auto-switches; no code change. AI-search visibility
+uses your Gemini key and works without any SERP key.
 
 ## Status (phased build)
 
 - ✅ **Phase 0** — scaffold, DB schema, config.
 - ✅ **Phase 1 (MVP)** — memory + CSV import + bilingual generation + deterministic
-  schema + validation scorer + editor UI. *(this build)*
-- ⏳ **Phase 2** — competitor analysis (BD ed-tech first) + keyword research.
-- ⏳ **Phase 3** — SERP rank checks + AI-search visibility + 3-week cron (`/api/cron/recheck`).
+  schema + validation scorer + editor UI.
+- ✅ **Phase 2** — keyword research (Google Autocomplete) + competitor analysis
+  (BD ed-tech: Shikho/ACS/British Council/Udvash/Bohubrihi/Ostad via DuckDuckGo SERP +
+  on-page parsing + per-platform scoring). *(this build)*
+- ✅ **Phase 3** — web SERP rank checks (pluggable provider: DuckDuckGo default,
+  Serper/Brave optional via free key), AI-search visibility (Gemini, Google-search
+  grounded), per-course tracking panel, and the 3-week cron (`/api/cron/recheck`). *(this build)*
 - ⏳ **Phase 4** — version history/diff, exports, pluggable paid data source.
 
 See `C:\Users\<you>\.claude\plans\i-am-trying-to-rustling-volcano.md` for the full plan.

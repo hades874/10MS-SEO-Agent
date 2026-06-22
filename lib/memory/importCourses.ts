@@ -3,6 +3,7 @@ import { courses, seoRecords, seoEmbeddings, styleMemory } from "../db/schema";
 import { eq } from "drizzle-orm";
 import type { ParsedCourse } from "./parseCsv";
 import { deriveFacets } from "../util/facets";
+import { deriveKeywords } from "../util/keywords";
 import { mineStyle } from "./styleMine";
 import { isAiConfigured, isEmbeddingConfigured } from "../ai/models";
 import { backfillKeywords } from "../ai/backfill";
@@ -79,9 +80,9 @@ export async function importCourses(
       })
       .returning({ id: courses.id });
 
-    // AI keyword back-fill (CSV has none). Off by default — it's the rate-limit
-    // bottleneck on free-tier Gemini. Use `npm run backfill:keywords` instead.
-    let keywords: string[] | null = null;
+    // Keywords: deterministic by default (CSV has none, and this avoids the
+    // free-tier rate-limit bottleneck). AI back-fill upgrades these when run.
+    let keywords: string[] | null = deriveKeywords(facets, p.name);
     let aiGenerated = false;
     if (opts.backfillKw && useAi && (p.metaDescBn || p.metaDescEn || p.metaTitleEn)) {
       try {

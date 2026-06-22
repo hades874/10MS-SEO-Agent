@@ -1,5 +1,5 @@
 import "../lib/loadEnv";
-import { isNull, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "../lib/db";
 import { courses, seoRecords } from "../lib/db/schema";
 import { backfillKeywords } from "../lib/ai/backfill";
@@ -8,9 +8,9 @@ import { isAiConfigured } from "../lib/ai/models";
 import { sleep, withQuotaRetry } from "../lib/util/throttle";
 
 /**
- * Resumable, rate-limit-friendly keyword back-fill. Only processes SEO records that
- * still have no keywords, so you can run it repeatedly until everything is filled —
- * ideal for free-tier Gemini (10 req/min). Spacing via IMPORT_THROTTLE_MS.
+ * Resumable, rate-limit-friendly keyword back-fill. Processes records whose keywords
+ * are still the deterministic defaults (aiGenerated = false) and upgrades them to AI
+ * keywords. Run repeatedly until all are upgraded — ideal for free-tier Gemini.
  *   npm run backfill:keywords
  */
 async function main() {
@@ -42,9 +42,9 @@ async function main() {
     })
     .from(seoRecords)
     .innerJoin(courses, eq(courses.id, seoRecords.courseId))
-    .where(isNull(seoRecords.keywords));
+    .where(eq(seoRecords.aiGenerated, false));
 
-  console.log(`${rows.length} course(s) need keywords.`);
+  console.log(`${rows.length} course(s) with deterministic keywords to upgrade.`);
   let done = 0;
   let failed = 0;
 

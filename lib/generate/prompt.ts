@@ -40,17 +40,17 @@ export function buildUserPrompt(
     .filter(Boolean)
     .join("\n");
 
+  // Keep the exemplar block lean: 2 nearest courses, titles + descriptions +
+  // keywords only. og_* are derived from these and just inflate the prompt.
   const exemplarBlock = exemplars
-    .slice(0, 4)
+    .slice(0, 2)
     .map((e, i) => {
       return `Example ${i + 1} — ${e.name}
   meta_title_bn: ${e.metaTitleBn ?? ""}
   meta_title_en: ${e.metaTitleEn ?? ""}
   meta_desc_bn: ${e.metaDescBn ?? ""}
   meta_desc_en: ${e.metaDescEn ?? ""}
-  keywords: ${(e.keywords ?? []).join(", ")}
-  og_title: ${e.ogTitle ?? ""}
-  og_description: ${e.ogDescription ?? ""}`;
+  keywords: ${(e.keywords ?? []).join(", ")}`;
     })
     .join("\n\n");
 
@@ -79,8 +79,14 @@ ${exemplarBlock || "(none retrieved)"}
 Produce: meta title (bn+en), meta description (bn+en), 3–6 keywords, og title, og description, og image alt, image names (thumbnail + square), image alt texts (thumbnail + square). Respect every character limit.`;
 }
 
-/** A focused repair instruction listing only the fields that broke length limits. */
+/**
+ * Self-contained repair prompt. We do NOT re-send the exemplar/style grounding
+ * here (that's the bulk of the input tokens) — the previous attempt already
+ * captured the house voice. We send the prior values compactly plus the fields
+ * that broke length limits, so a repair costs a fraction of the first pass.
+ */
 export function buildRepairPrompt(
+  copy: Record<string, unknown>,
   violations: Array<{ field: string; current: number; min: number; max: number; value: string }>
 ): string {
   const lines = violations
@@ -89,5 +95,11 @@ export function buildRepairPrompt(
         `- ${v.field}: currently ${v.current} chars, must be ${v.min}–${v.max}. Current value: "${v.value}"`
     )
     .join("\n");
-  return `Some fields are outside their character limits. Rewrite ONLY these fields to fit, preserving meaning, language (Bangla stays Bangla, English stays English), and keywords:\n${lines}\n\nReturn the full set of fields again with these fixed.`;
+  return `Here is a previously generated SEO bundle that is mostly correct:
+${JSON.stringify(copy)}
+
+These fields are outside their character limits. Rewrite ONLY these fields to fit, preserving meaning, language (Bangla stays Bangla, English stays English), and keywords. Keep every other field exactly as given:
+${lines}
+
+Return the full set of fields again with these fixed.`;
 }

@@ -1,0 +1,3 @@
+token optimization
+
+in the current system, I am using the free api of gemini, so I am hitting rate limiting quite often. how, I want to optimize the token usage. both the input token processing and output token processing should be optimized so that the api can be used for a brief amount of time before hitting rate limit. I know as this is free api, I know I will hit rate limit, but atleast I want the current process to finish up and show me the result to the very least

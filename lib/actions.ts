@@ -2,17 +2,149 @@
 
 import { revalidatePath } from "next/cache";
 import { getDb, isDbConfigured } from "./db";
-import { courses, seoRecords, seoEmbeddings } from "./db/schema";
+import {
+  courses,
+  seoRecords,
+  seoEmbeddings,
+  keywordResearch,
+  validationScores,
+  type Course,
+} from "./db/schema";
 import { eq } from "drizzle-orm";
+import { type KeywordResearch } from "./keywords/autocomplete";
+import { researchKeywordVia, activeKeywordProvider } from "./keywords/provider";
+import { analyzeCompetitors, type AnalyzeResult } from "./competitors/analyze";
+import { trackCourse, type TrackResult } from "./track";
+import { getCourseDetail, getCourseVersions } from "./queries";
 import { deriveFacets } from "./util/facets";
 import { suggestSlug } from "./util/slug";
 import { isAiConfigured } from "./ai/models";
 import { embedText, buildEmbedSourceText } from "./ai/embed";
 import { generateSeo, type GenerateResult } from "./generate/seo";
+import { buildProductSchema } from "./generate/buildSchema";
+import { scoreRecord, type ScoreResult } from "./score/validate";
 import { recallExemplars, loadStyleContext, existingTitles } from "./memory/recall";
 import { parseSeedCsv } from "./memory/parseCsv";
 import { importCourses } from "./memory/importCourses";
 import type { CourseInput, GeneratedCopy } from "./generate/types";
+
+type Db = ReturnType<typeof getDb>;
+
+/**
+ * Persist one SEO record version for a course: rebuild the JSON-LD deterministically,
+ * re-score, insert the record, refresh the embedding, and write validation history.
+ * Shared by saveCourse (v1) and updateCourseSeo (vN) so they stay consistent.
+ */
+async function writeSeoVersion(
+  db: Db,
+  args: {
+    course: Pick<
+      Course,
+      "id" | "name" | "slug" | "imageUrl" | "sku" | "price" | "currency" | "isFree"
+    >;
+    version: number;
+    copy: GeneratedCopy;
+    publish: boolean;
+    aiGenerated: boolean;
+  }
+): Promise<{ schema: Record<string, unknown>; score: ScoreResult }> {
+  const { course, version, copy, publish, aiGenerated } = args;
+
+  // JSON-LD is always derived from stored facts, never the client/LLM.
+  const built = buildProductSchema({
+    name: course.name,
+    slug: course.slug,
+    description: copy.metaDescBn,
+    imageUrl: course.imageUrl,
+    sku: course.sku,
+    price: course.price,
+    currency: course.currency,
+    isFree: course.isFree ?? false,
+  });
+  const schema = built.schema as unknown as Record<string, unknown>;
+
+  // Uniqueness check excludes this course's own (prior) versions.
+  let titles: string[] = [];
+  try {
+    titles = await existingTitles(course.id);
+  } catch {
+    /* scoring still works without the uniqueness corpus */
+  }
+  const score = scoreRecord(
+    {
+      metaTitleBn: copy.metaTitleBn,
+      metaTitleEn: copy.metaTitleEn,
+      metaDescBn: copy.metaDescBn,
+      metaDescEn: copy.metaDescEn,
+      keywords: copy.keywords,
+      ogTitle: copy.ogTitle,
+      ogDescription: copy.ogDescription,
+      ogImage: course.imageUrl,
+      imageAltThumb: copy.imageAltThumb,
+      imageAltSqr: copy.imageAltSqr,
+      imageNameThumb: copy.imageNameThumb,
+      imageNameSqr: copy.imageNameSqr,
+      schemaJsonld: schema,
+      slug: course.slug,
+    },
+    { existingTitles: titles }
+  );
+
+  await db.insert(seoRecords).values({
+    courseId: course.id,
+    version,
+    metaTitleBn: copy.metaTitleBn,
+    metaTitleEn: copy.metaTitleEn,
+    metaDescBn: copy.metaDescBn,
+    metaDescEn: copy.metaDescEn,
+    keywords: copy.keywords,
+    ogTitle: copy.ogTitle,
+    ogDescription: copy.ogDescription,
+    ogImage: course.imageUrl,
+    ogImageAlt: copy.ogImageAlt,
+    imageNameThumb: copy.imageNameThumb,
+    imageNameSqr: copy.imageNameSqr,
+    imageAltThumb: copy.imageAltThumb,
+    imageAltSqr: copy.imageAltSqr,
+    schemaJsonld: schema,
+    validationScore: score.total,
+    aiGenerated,
+    isPublished: publish,
+  });
+
+  // Refresh the embedding (one per course): drop the old, insert the latest.
+  if (isAiConfigured()) {
+    try {
+      const sourceText = buildEmbedSourceText({
+        name: course.name,
+        metaDescBn: copy.metaDescBn,
+        metaDescEn: copy.metaDescEn,
+        keywords: copy.keywords,
+      });
+      const embedding = await embedText(sourceText);
+      await db.delete(seoEmbeddings).where(eq(seoEmbeddings.courseId, course.id));
+      await db
+        .insert(seoEmbeddings)
+        .values({ courseId: course.id, sourceText, embedding });
+    } catch {
+      /* embedding optional */
+    }
+  }
+
+  // Validation score history (one row per version).
+  try {
+    await db.insert(validationScores).values({
+      courseId: course.id,
+      recordVersion: version,
+      breakdown: score.breakdown as unknown as Record<string, number>,
+      total: score.total,
+    });
+  } catch {
+    /* history is best-effort */
+  }
+
+  return { schema, score };
+}
 
 export interface GenerateActionResult {
   ok: boolean;
@@ -48,8 +180,8 @@ export async function generateForNewCourse(
 
     const [exemplars, style, titles] = isDbConfigured()
       ? await Promise.all([
-          recallExemplars(input, 4),
-          loadStyleContext(12),
+          recallExemplars(input, 2),
+          loadStyleContext(6),
           existingTitles(),
         ])
       : [[], { phrases: [], templates: [], brandRules: [] }, []];
@@ -65,7 +197,15 @@ export async function generateForNewCourse(
       input,
     };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    const msg = (e as Error).message ?? "";
+    if (/high.?demand|overload|temporarily|\b503\b|\b529\b|unavailable/i.test(msg)) {
+      return {
+        ok: false,
+        error:
+          "The AI model is temporarily busy (high demand). We retried automatically — please try generating again in a moment.",
+      };
+    }
+    return { ok: false, error: msg };
   }
 }
 
@@ -75,12 +215,10 @@ export interface SaveActionResult {
   courseId?: number;
 }
 
-/** Persist a generated/edited bundle as a new course + SEO record (+ embedding). */
+/** Persist a generated/edited bundle as a new course + SEO record v1 (+ embedding). */
 export async function saveCourse(
   input: CourseInput,
   copy: GeneratedCopy,
-  schema: Record<string, unknown>,
-  validationScore: number,
   publish: boolean
 ): Promise<SaveActionResult> {
   try {
@@ -113,49 +251,67 @@ export async function saveCourse(
         status: publish ? "live" : "draft",
         launchedAt: publish ? new Date() : null,
       })
-      .returning({ id: courses.id });
+      .returning();
 
-    await db.insert(seoRecords).values({
-      courseId: course.id,
+    await writeSeoVersion(db, {
+      course,
       version: 1,
-      metaTitleBn: copy.metaTitleBn,
-      metaTitleEn: copy.metaTitleEn,
-      metaDescBn: copy.metaDescBn,
-      metaDescEn: copy.metaDescEn,
-      keywords: copy.keywords,
-      ogTitle: copy.ogTitle,
-      ogDescription: copy.ogDescription,
-      ogImage: input.imageUrl,
-      ogImageAlt: copy.ogImageAlt,
-      imageNameThumb: copy.imageNameThumb,
-      imageNameSqr: copy.imageNameSqr,
-      imageAltThumb: copy.imageAltThumb,
-      imageAltSqr: copy.imageAltSqr,
-      schemaJsonld: schema,
-      validationScore,
+      copy,
+      publish,
       aiGenerated: true,
-      isPublished: publish,
     });
-
-    if (isAiConfigured()) {
-      try {
-        const sourceText = buildEmbedSourceText({
-          name: input.name,
-          metaDescBn: copy.metaDescBn,
-          metaDescEn: copy.metaDescEn,
-          keywords: copy.keywords,
-        });
-        const embedding = await embedText(sourceText);
-        await db
-          .insert(seoEmbeddings)
-          .values({ courseId: course.id, sourceText, embedding });
-      } catch {
-        /* embedding optional */
-      }
-    }
 
     revalidatePath("/");
     return { ok: true, courseId: course.id };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+export interface UpdateActionResult {
+  ok: boolean;
+  error?: string;
+  version?: number;
+  score?: number;
+}
+
+/** Save human edits to an existing course as a NEW seo_record version (vN+1). */
+export async function updateCourseSeo(
+  courseId: number,
+  copy: GeneratedCopy,
+  publish: boolean
+): Promise<UpdateActionResult> {
+  try {
+    if (!isDbConfigured()) {
+      return { ok: false, error: "Database not configured (set DATABASE_URL)." };
+    }
+    const db = getDb();
+    const detail = await getCourseDetail(courseId);
+    if (!detail) return { ok: false, error: "Course not found." };
+    const { course } = detail;
+
+    const versions = await getCourseVersions(courseId);
+    const nextVersion = (versions[0]?.version ?? 0) + 1;
+
+    const { score } = await writeSeoVersion(db, {
+      course,
+      version: nextVersion,
+      copy,
+      publish,
+      aiGenerated: false, // human-reviewed edit
+    });
+
+    // Promoting an edited version to publish also flips the course live.
+    if (publish && course.status !== "live") {
+      await db
+        .update(courses)
+        .set({ status: "live", launchedAt: course.launchedAt ?? new Date() })
+        .where(eq(courses.id, courseId));
+    }
+
+    revalidatePath(`/courses/${courseId}`);
+    revalidatePath("/");
+    return { ok: true, version: nextVersion, score: score.total };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
@@ -177,6 +333,92 @@ export async function runImport(csvText: string): Promise<ImportActionResult> {
     const summary = await importCourses(parsed, { withAi: true, resetSeed: true });
     revalidatePath("/");
     return { ok: true, summary };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+export interface KeywordActionResult {
+  ok: boolean;
+  error?: string;
+  research?: KeywordResearch;
+}
+
+/** Run free keyword research (Google Autocomplete) and cache it. */
+export async function keywordResearchAction(
+  seed: string,
+  expand = true
+): Promise<KeywordActionResult> {
+  try {
+    if (!seed.trim()) return { ok: false, error: "Enter a seed keyword." };
+    const research = await researchKeywordVia(seed.trim(), { expand });
+    if (isDbConfigured()) {
+      try {
+        await getDb().insert(keywordResearch).values({
+          seedKeyword: research.seed,
+          suggestions: research.suggestions,
+          related: research.related,
+          approxDemandSignal: research.demandSignal,
+          source: activeKeywordProvider(),
+        });
+      } catch {
+        /* caching best-effort */
+      }
+    }
+    return { ok: true, research };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+export interface CompetitorActionResult {
+  ok: boolean;
+  error?: string;
+  result?: AnalyzeResult;
+}
+
+/** Analyze BD ed-tech competitors for a keyword (discover, parse, score, cache). */
+export async function analyzeCompetitorsAction(
+  keyword: string,
+  targetKeywords: string[] = []
+): Promise<CompetitorActionResult> {
+  try {
+    if (!keyword.trim()) return { ok: false, error: "No keyword to analyze." };
+    const result = await analyzeCompetitors(keyword.trim(), targetKeywords);
+    return { ok: true, result };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+export interface TrackActionResult {
+  ok: boolean;
+  error?: string;
+  result?: TrackResult;
+}
+
+/** Manually run rank + AI-visibility tracking for a course now. */
+export async function trackCourseAction(
+  courseId: number
+): Promise<TrackActionResult> {
+  try {
+    if (!isDbConfigured()) return { ok: false, error: "Database not configured." };
+    const detail = await getCourseDetail(courseId);
+    if (!detail) return { ok: false, error: "Course not found." };
+    const { course, record } = detail;
+    if (!(record?.keywords ?? []).length) {
+      return { ok: false, error: "Course has no keywords to track." };
+    }
+    const result = await trackCourse({
+      courseId,
+      productUrl: course.productUrl,
+      keywords: record!.keywords,
+      level: course.level,
+      year: course.year,
+      subject: course.subject,
+    });
+    revalidatePath(`/courses/${courseId}`);
+    return { ok: true, result };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
