@@ -9,6 +9,7 @@ import {
   vector,
   real,
   index,
+  unique,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -93,6 +94,8 @@ export const seoEmbeddings = pgTable(
       "hnsw",
       t.embedding.op("vector_cosine_ops")
     ),
+    // One embedding per course — the refresh path upserts on this constraint.
+    unique("seo_embeddings_course_id_key").on(t.courseId),
   ]
 );
 

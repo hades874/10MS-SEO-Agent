@@ -82,8 +82,9 @@ async function geminiVisibility(queries: string[]): Promise<EngineVisibility> {
         );
         if (src && "url" in src && typeof src.url === "string") citationUrl = src.url;
       }
-    } catch {
-      /* skip this sample on hard failure */
+    } catch (e) {
+      // Skip this sample; it's excluded from the mention-rate denominator below.
+      console.error("checkAiVisibility (gemini): sample failed:", e);
     }
   }
 
@@ -164,8 +165,9 @@ async function openaiCompatibleVisibility(
         if (d.prominence === "top") bestProminence = "top";
         else if (bestProminence === "none") bestProminence = "mention";
       }
-    } catch {
-      /* skip this sample on hard failure */
+    } catch (e) {
+      // Skip this sample; it's excluded from the mention-rate denominator below.
+      console.error(`checkAiVisibility (${engine}): sample failed:`, e);
     }
   }
 

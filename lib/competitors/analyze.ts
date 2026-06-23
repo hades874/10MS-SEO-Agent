@@ -68,8 +68,9 @@ export async function analyzeCompetitors(
           wordCount: page.wordCount,
           validationScore: score.total,
         });
-      } catch {
-        /* caching is best-effort */
+      } catch (e) {
+        // Caching is best-effort; the analysis result is still returned.
+        console.error(`analyzeCompetitors: snapshot insert failed (${d.competitor.domain}, "${keyword}"):`, e);
       }
     }
   }

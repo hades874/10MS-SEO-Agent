@@ -39,8 +39,9 @@ export async function trackCourse(input: TrackInput): Promise<TrackResult> {
           position: r.position,
           source: "serp",
         });
-      } catch {
-        /* best-effort */
+      } catch (e) {
+        // Best-effort persistence; the rank result is still returned to the caller.
+        console.error(`trackCourse: rankChecks insert failed (course ${input.courseId}, "${kw}"):`, e);
       }
     }
   }
@@ -65,8 +66,9 @@ export async function trackCourse(input: TrackInput): Promise<TrackResult> {
           samples: e.samples,
           mentionRate: e.mentionRate,
         });
-      } catch {
-        /* best-effort */
+      } catch (err) {
+        // Best-effort persistence; the visibility result is still returned.
+        console.error(`trackCourse: aiVisibilityChecks insert failed (course ${input.courseId}, ${e.engine}):`, err);
       }
     }
   }

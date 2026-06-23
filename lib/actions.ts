@@ -47,8 +47,9 @@ async function writeSeoVersion(
     publish: boolean;
     aiGenerated: boolean;
   }
-): Promise<{ schema: Record<string, unknown>; score: ScoreResult }> {
+): Promise<{ schema: Record<string, unknown>; score: ScoreResult; warnings: string[] }> {
   const { course, version, copy, publish, aiGenerated } = args;
+  const warnings: string[] = [];
 
   // JSON-LD is always derived from stored facts, never the client/LLM.
   const built = buildProductSchema({
@@ -67,8 +68,10 @@ async function writeSeoVersion(
   let titles: string[] = [];
   try {
     titles = await existingTitles(course.id);
-  } catch {
-    /* scoring still works without the uniqueness corpus */
+  } catch (e) {
+    // Scoring still works without the uniqueness corpus — just note it.
+    warnings.push("uniqueness corpus unavailable");
+    console.error(`writeSeoVersion: existingTitles failed for course ${course.id}:`, e);
   }
   const score = scoreRecord(
     {
@@ -90,60 +93,73 @@ async function writeSeoVersion(
     { existingTitles: titles }
   );
 
-  await db.insert(seoRecords).values({
-    courseId: course.id,
-    version,
-    metaTitleBn: copy.metaTitleBn,
-    metaTitleEn: copy.metaTitleEn,
-    metaDescBn: copy.metaDescBn,
-    metaDescEn: copy.metaDescEn,
-    keywords: copy.keywords,
-    ogTitle: copy.ogTitle,
-    ogDescription: copy.ogDescription,
-    ogImage: course.imageUrl,
-    ogImageAlt: copy.ogImageAlt,
-    imageNameThumb: copy.imageNameThumb,
-    imageNameSqr: copy.imageNameSqr,
-    imageAltThumb: copy.imageAltThumb,
-    imageAltSqr: copy.imageAltSqr,
-    schemaJsonld: schema,
-    validationScore: score.total,
-    aiGenerated,
-    isPublished: publish,
-  });
-
-  // Refresh the embedding (one per course): drop the old, insert the latest.
+  // Compute the embedding BEFORE the transaction — it's a network/AI call that
+  // can be slow or fail on quota, and we don't want to hold a DB tx open for it.
+  // Embedding is enrichment for recall, so a failure here is non-fatal: we still
+  // persist the record + history, just without refreshing the vector.
+  let embedding: number[] | null = null;
+  let sourceText = "";
   if (isAiConfigured()) {
     try {
-      const sourceText = buildEmbedSourceText({
+      sourceText = buildEmbedSourceText({
         name: course.name,
         metaDescBn: copy.metaDescBn,
         metaDescEn: copy.metaDescEn,
         keywords: copy.keywords,
       });
-      const embedding = await embedText(sourceText);
-      await db.delete(seoEmbeddings).where(eq(seoEmbeddings.courseId, course.id));
-      await db
-        .insert(seoEmbeddings)
-        .values({ courseId: course.id, sourceText, embedding });
-    } catch {
-      /* embedding optional */
+      embedding = await embedText(sourceText);
+    } catch (e) {
+      warnings.push("embedding not refreshed");
+      console.error(`writeSeoVersion: embedText failed for course ${course.id}:`, e);
     }
   }
 
-  // Validation score history (one row per version).
-  try {
-    await db.insert(validationScores).values({
+  // All DB writes are atomic: the record, the refreshed embedding, and the score
+  // history commit together or not at all (no stale/orphaned state on a crash).
+  await db.transaction(async (tx) => {
+    await tx.insert(seoRecords).values({
+      courseId: course.id,
+      version,
+      metaTitleBn: copy.metaTitleBn,
+      metaTitleEn: copy.metaTitleEn,
+      metaDescBn: copy.metaDescBn,
+      metaDescEn: copy.metaDescEn,
+      keywords: copy.keywords,
+      ogTitle: copy.ogTitle,
+      ogDescription: copy.ogDescription,
+      ogImage: course.imageUrl,
+      ogImageAlt: copy.ogImageAlt,
+      imageNameThumb: copy.imageNameThumb,
+      imageNameSqr: copy.imageNameSqr,
+      imageAltThumb: copy.imageAltThumb,
+      imageAltSqr: copy.imageAltSqr,
+      schemaJsonld: schema,
+      validationScore: score.total,
+      aiGenerated,
+      isPublished: publish,
+    });
+
+    // Refresh the embedding (one per course) via upsert on the unique courseId.
+    if (embedding) {
+      await tx
+        .insert(seoEmbeddings)
+        .values({ courseId: course.id, sourceText, embedding })
+        .onConflictDoUpdate({
+          target: seoEmbeddings.courseId,
+          set: { sourceText, embedding, createdAt: new Date() },
+        });
+    }
+
+    // Validation score history (one row per version).
+    await tx.insert(validationScores).values({
       courseId: course.id,
       recordVersion: version,
       breakdown: score.breakdown as unknown as Record<string, number>,
       total: score.total,
     });
-  } catch {
-    /* history is best-effort */
-  }
+  });
 
-  return { schema, score };
+  return { schema, score, warnings };
 }
 
 export interface GenerateActionResult {
@@ -213,6 +229,7 @@ export interface SaveActionResult {
   ok: boolean;
   error?: string;
   courseId?: number;
+  warnings?: string[];
 }
 
 /** Persist a generated/edited bundle as a new course + SEO record v1 (+ embedding). */
@@ -253,7 +270,7 @@ export async function saveCourse(
       })
       .returning();
 
-    await writeSeoVersion(db, {
+    const { warnings } = await writeSeoVersion(db, {
       course,
       version: 1,
       copy,
@@ -262,8 +279,9 @@ export async function saveCourse(
     });
 
     revalidatePath("/");
-    return { ok: true, courseId: course.id };
+    return { ok: true, courseId: course.id, warnings };
   } catch (e) {
+    console.error("saveCourse failed:", e);
     return { ok: false, error: (e as Error).message };
   }
 }
@@ -273,6 +291,7 @@ export interface UpdateActionResult {
   error?: string;
   version?: number;
   score?: number;
+  warnings?: string[];
 }
 
 /** Save human edits to an existing course as a NEW seo_record version (vN+1). */
@@ -293,7 +312,7 @@ export async function updateCourseSeo(
     const versions = await getCourseVersions(courseId);
     const nextVersion = (versions[0]?.version ?? 0) + 1;
 
-    const { score } = await writeSeoVersion(db, {
+    const { score, warnings } = await writeSeoVersion(db, {
       course,
       version: nextVersion,
       copy,
@@ -311,8 +330,9 @@ export async function updateCourseSeo(
 
     revalidatePath(`/courses/${courseId}`);
     revalidatePath("/");
-    return { ok: true, version: nextVersion, score: score.total };
+    return { ok: true, version: nextVersion, score: score.total, warnings };
   } catch (e) {
+    console.error("updateCourseSeo failed:", e);
     return { ok: false, error: (e as Error).message };
   }
 }
@@ -334,6 +354,7 @@ export async function runImport(csvText: string): Promise<ImportActionResult> {
     revalidatePath("/");
     return { ok: true, summary };
   } catch (e) {
+    console.error("runImport failed:", e);
     return { ok: false, error: (e as Error).message };
   }
 }
@@ -361,8 +382,9 @@ export async function keywordResearchAction(
           approxDemandSignal: research.demandSignal,
           source: activeKeywordProvider(),
         });
-      } catch {
-        /* caching best-effort */
+      } catch (e) {
+        // Caching is best-effort; the research result is still returned.
+        console.error(`keywordResearchAction: cache write failed for "${research.seed}":`, e);
       }
     }
     return { ok: true, research };
@@ -387,6 +409,7 @@ export async function analyzeCompetitorsAction(
     const result = await analyzeCompetitors(keyword.trim(), targetKeywords);
     return { ok: true, result };
   } catch (e) {
+    console.error("analyzeCompetitorsAction failed:", e);
     return { ok: false, error: (e as Error).message };
   }
 }
@@ -420,6 +443,7 @@ export async function trackCourseAction(
     revalidatePath(`/courses/${courseId}`);
     return { ok: true, result };
   } catch (e) {
+    console.error("trackCourseAction failed:", e);
     return { ok: false, error: (e as Error).message };
   }
 }
