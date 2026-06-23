@@ -22,6 +22,11 @@ import { isAiConfigured } from "./ai/models";
 import { embedText, buildEmbedSourceText } from "./ai/embed";
 import { generateSeo, type GenerateResult } from "./generate/seo";
 import { buildProductSchema } from "./generate/buildSchema";
+import {
+  CourseInputSchema,
+  GeneratedCopySchema,
+  firstIssue,
+} from "./generate/validation";
 import { scoreRecord, type ScoreResult } from "./score/validate";
 import { recallExemplars, loadStyleContext, existingTitles } from "./memory/recall";
 import { parseSeedCsv } from "./memory/parseCsv";
@@ -182,6 +187,11 @@ export async function generateForNewCourse(
           "AI not configured. Add GOOGLE_GENERATIVE_AI_API_KEY to .env.local (free key at https://aistudio.google.com/apikey).",
       };
     }
+    const parsed = CourseInputSchema.safeParse(raw);
+    if (!parsed.success) {
+      return { ok: false, error: `Invalid course input — ${firstIssue(parsed.error)}` };
+    }
+    raw = parsed.data;
     const facets = deriveFacets(raw.name, raw.slug);
     const input: CourseInput = {
       ...raw,
@@ -242,6 +252,16 @@ export async function saveCourse(
     if (!isDbConfigured()) {
       return { ok: false, error: "Database not configured (set DATABASE_URL)." };
     }
+    const parsedInput = CourseInputSchema.safeParse(input);
+    if (!parsedInput.success) {
+      return { ok: false, error: `Invalid course input — ${firstIssue(parsedInput.error)}` };
+    }
+    const parsedCopy = GeneratedCopySchema.safeParse(copy);
+    if (!parsedCopy.success) {
+      return { ok: false, error: `Invalid SEO copy — ${firstIssue(parsedCopy.error)}` };
+    }
+    input = parsedInput.data;
+    copy = parsedCopy.data;
     const db = getDb();
     const facets = deriveFacets(input.name, input.slug);
     const SITE_ORIGIN = process.env.SITE_ORIGIN ?? "https://10minuteschool.com";
@@ -304,6 +324,14 @@ export async function updateCourseSeo(
     if (!isDbConfigured()) {
       return { ok: false, error: "Database not configured (set DATABASE_URL)." };
     }
+    if (!Number.isInteger(courseId) || courseId <= 0) {
+      return { ok: false, error: "Invalid course id." };
+    }
+    const parsedCopy = GeneratedCopySchema.safeParse(copy);
+    if (!parsedCopy.success) {
+      return { ok: false, error: `Invalid SEO copy — ${firstIssue(parsedCopy.error)}` };
+    }
+    copy = parsedCopy.data;
     const db = getDb();
     const detail = await getCourseDetail(courseId);
     if (!detail) return { ok: false, error: "Course not found." };

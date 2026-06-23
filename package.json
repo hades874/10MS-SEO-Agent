@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "check": "tsx scripts/check-env.ts",
     "db:init": "tsx scripts/init-db.ts",
     "db:generate": "drizzle-kit generate",
@@ -44,7 +46,8 @@
     "postcss": "^8.5.15",
     "tailwindcss": "^3.4.19",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.6"
   },
   "allowScripts": {
     "esbuild@0.18.20": true,
