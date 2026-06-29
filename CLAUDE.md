@@ -13,7 +13,9 @@ Stack: Next.js 16 (App Router, React 19) + Vercel AI SDK v6 + Neon Postgres (pgv
 ```bash
 npm run dev            # Next dev server → http://localhost:3000
 npm run build          # production build
-npm run lint           # next lint
+npm run lint           # eslint .
+npm test               # Vitest (run once)
+npm run test:watch     # Vitest (watch mode)
 npm run check          # verify DATABASE_URL + AI key (connection, pgvector, tables, model calls)
 
 # Database (Drizzle + Neon)
@@ -29,7 +31,7 @@ npm run backfill:keywords        # AI-backfill keywords for rows missing them (s
 npm run seed:style               # re-mine just the house-style bank
 ```
 
-There is no test runner configured. `npm run check` (scripts/check-env.ts) is the closest thing to a smoke test — run it after touching DB or AI config.
+Tests live in `tests/**/*.test.ts` (Vitest, node environment). Run `npm run check` after touching DB or AI config — it verifies the connection, pgvector extension, tables, and model calls end-to-end.
 
 First-time setup order matters: `db:init` (extension) → `db:push` (tables) → `import:csv` (seed).
 

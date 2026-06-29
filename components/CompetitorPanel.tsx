@@ -39,7 +39,8 @@ export function CompetitorPanel({
       </h3>
       <p className="mb-3 text-xs text-gray-400">
         Discovers Shikho / ACS / British Council / Udvash / Bohubrihi / Ostad pages
-        ranking for the keyword, then scores their on-page SEO against yours.
+        ranking for the keyword, then scores their on-page SEO against yours. If none of
+        them rank, it falls back to the top-ranking pages so you still see who does.
       </p>
       <div className="flex gap-2">
         <input
@@ -66,6 +67,13 @@ export function CompetitorPanel({
               broader keyword.
             </p>
           ) : (
+            <>
+            {result.source === "discovered" && (
+              <p className="mb-2 rounded bg-amber-50 px-2 py-1 text-sm text-amber-700">
+                None of your watchlist domains rank for “{result.keyword}” — showing the
+                top-ranking pages instead.
+              </p>
+            )}
             <table className="w-full text-sm">
               <thead className="border-b border-gray-200 text-left text-xs uppercase text-gray-500">
                 <tr>
@@ -102,6 +110,7 @@ export function CompetitorPanel({
                 ))}
               </tbody>
             </table>
+            </>
           )}
           <p className="mt-2 text-xs text-gray-400">
             Checked {result.checkedDomains} domain(s). Note: SPA competitor pages may

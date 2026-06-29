@@ -17,6 +17,9 @@ export interface AnalyzeResult {
   keyword: string;
   competitors: CompetitorResult[];
   checkedDomains: number;
+  /** "watchlist" when curated BD domains ranked; "discovered" when we fell back to the
+   *  top general-SERP domains because no watchlist domain ranked for the keyword. */
+  source: "watchlist" | "discovered";
 }
 
 /**
@@ -29,15 +32,18 @@ export async function analyzeCompetitors(
   targetKeywords: string[] = []
 ): Promise<AnalyzeResult> {
   const kws = targetKeywords.length ? targetKeywords : [keyword];
-  const { urls: discovered, rawResults } = await discoverCompetitorUrls(keyword);
+  const { urls: discovered, rawResults, source } = await discoverCompetitorUrls(keyword);
 
-  // Zero raw SERP results means the search provider returned nothing — almost always
-  // the keyless DuckDuckGo scraper getting blocked (HTTP 403), not an empty SERP.
-  // Surface this as an actionable error instead of a misleading "no competitors found".
-  if (rawResults === 0 && (await activeSerpProvider()) === "duckduckgo") {
+  // Zero raw SERP results means the provider returned nothing at all — almost never a
+  // genuinely empty SERP for real-world ed-tech keywords. Surface as an actionable error.
+  if (rawResults === 0) {
+    const provider = await activeSerpProvider();
     throw new Error(
-      "SERP provider returned no results — the keyless DuckDuckGo scraper is being blocked. " +
-        "Add a Serper key (serper.dev, free tier) or Brave Search key in Settings to enable competitor discovery."
+      provider === "duckduckgo"
+        ? "SERP provider returned no results — the keyless DuckDuckGo scraper may be blocked. " +
+          "Add a Serper key (serper.dev, free tier) or Brave Search key in Settings for reliable results."
+        : `${provider} returned 0 results — your API key may be invalid or the service is temporarily unavailable. ` +
+          "Check your key in Settings, or try again in a moment."
     );
   }
 
@@ -80,5 +86,6 @@ export async function analyzeCompetitors(
     keyword,
     competitors,
     checkedDomains: discovered.length,
+    source,
   };
 }

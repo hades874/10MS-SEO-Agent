@@ -1,5 +1,8 @@
 import { serpSearch } from "../serp/provider";
-import { COMPETITORS, competitorForUrl, type Competitor } from "./config";
+import { COMPETITORS, competitorForUrl, genericCompetitorForUrl, type Competitor } from "./config";
+
+/** Max generic (non-watchlist) competitors to surface when nothing in the watchlist ranks. */
+const MAX_DISCOVERED = 5;
 
 /**
  * SERP discovery via DuckDuckGo (free, no API key) — our stand-in for "where do
@@ -19,6 +22,9 @@ export interface DiscoveryResult {
   /** Total raw SERP results seen across all queries — 0 means the provider returned
    *  nothing (almost always a blocked/keyless provider, not a genuinely empty SERP). */
   rawResults: number;
+  /** "watchlist" when curated BD domains ranked; "discovered" when we fell back to the
+   *  top general-SERP domains because no watchlist domain ranked for the keyword. */
+  source: "watchlist" | "discovered";
 }
 
 /**
@@ -51,11 +57,29 @@ export async function discoverCompetitorUrls(
     await sleep(300); // polite spacing between SERP calls
   }
 
-  return {
-    urls: [...found.entries()].map(([domain, url]) => ({
-      url,
-      competitor: COMPETITORS.find((c) => c.domain === domain)!,
-    })),
-    rawResults,
-  };
+  if (found.size > 0) {
+    return {
+      urls: [...found.entries()].map(([domain, url]) => ({
+        url,
+        competitor: COMPETITORS.find((c) => c.domain === domain)!,
+      })),
+      rawResults,
+      source: "watchlist",
+    };
+  }
+
+  // No curated watchlist domain ranked. Fall back to the top general-SERP domains
+  // (excluding 10MS itself and non-competitor platforms) so we still show who actually
+  // ranks. Reuses the `general` results — no extra API calls.
+  const discovered: DiscoveredUrl[] = [];
+  const seen = new Set<string>();
+  for (const url of general) {
+    const c = genericCompetitorForUrl(url);
+    if (!c || seen.has(c.domain)) continue;
+    seen.add(c.domain);
+    discovered.push({ url, competitor: c });
+    if (discovered.length >= MAX_DISCOVERED) break;
+  }
+
+  return { urls: discovered, rawResults, source: "discovered" };
 }

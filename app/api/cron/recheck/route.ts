@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { getDb, isDbConfigured } from "@/lib/db";
-import { courses, seoRecords, rankChecks } from "@/lib/db/schema";
+import { courses, rankChecks } from "@/lib/db/schema";
 import { and, eq, desc, lt, or, isNull } from "drizzle-orm";
 import { trackCourse } from "@/lib/track";
+import { getCourseDetail } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -29,19 +30,20 @@ export async function GET(req: Request) {
   const db = getDb();
   const cutoff = new Date(Date.now() - THREE_WEEKS_MS);
 
-  // Live courses whose most recent rank check is missing or older than 3 weeks.
-  const live = await db
+  // Step 1: find live courses whose most recent rank check is missing or older than 3 weeks.
+  // We intentionally do NOT join seoRecords here — a course may have multiple versions,
+  // and the ORDER BY on rankChecks.checkedAt does not correlate with seoRecords.version,
+  // so the de-dup would pick an arbitrary (potentially stale) version's keywords.
+  const dueRaw = await db
     .select({
       id: courses.id,
       productUrl: courses.productUrl,
       level: courses.level,
       year: courses.year,
       subject: courses.subject,
-      keywords: seoRecords.keywords,
       lastChecked: rankChecks.checkedAt,
     })
     .from(courses)
-    .leftJoin(seoRecords, eq(seoRecords.courseId, courses.id))
     .leftJoin(rankChecks, eq(rankChecks.courseId, courses.id))
     .where(
       and(
@@ -53,15 +55,18 @@ export async function GET(req: Request) {
 
   // De-dupe to one row per course (a course may join many rank rows).
   const seen = new Set<number>();
-  const due = live.filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
+  const due = dueRaw.filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
 
   const checked: { courseId: number; bestPosition: number | null; aiMentioned: boolean }[] = [];
   for (const c of due) {
     try {
+      // Step 2: fetch the latest seoRecord per course so we always track the current keywords.
+      const detail = await getCourseDetail(c.id);
+      const keywords = detail?.record?.keywords ?? null;
       const res = await trackCourse({
         courseId: c.id,
         productUrl: c.productUrl,
-        keywords: c.keywords,
+        keywords,
         level: c.level,
         year: c.year,
         subject: c.subject,

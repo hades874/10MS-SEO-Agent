@@ -65,8 +65,16 @@ export function parsePage(
   const wordCount = bodyText ? bodyText.split(" ").length : 0;
 
   const haystack = `${title ?? ""} ${metaDescription ?? ""} ${bodyText}`.toLowerCase();
+
+  // Use boundary-aware matching so a keyword like "course" doesn't match "coursework".
+  // \p{P} covers Unicode punctuation (handles "keyword," at end of sentence).
+  function phrasePresent(hay: string, phrase: string): boolean {
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[\\s\\p{P}])${escaped}([\\s\\p{P}]|$)`, "u").test(hay);
+  }
+
   const keywordsDetected = targetKeywords.filter((k) =>
-    haystack.includes(k.toLowerCase())
+    phrasePresent(haystack, k.toLowerCase())
   );
 
   return {

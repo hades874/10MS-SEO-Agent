@@ -37,7 +37,7 @@ export async function listCourses(): Promise<CourseListItem[]> {
     })
     .from(courses)
     .leftJoin(seoRecords, eq(seoRecords.courseId, courses.id))
-    .orderBy(desc(courses.createdAt));
+    .orderBy(desc(courses.id));
 
   // Collapse to one row per course (keep highest score if multiple records)
   const byId = new Map<number, CourseListItem>();

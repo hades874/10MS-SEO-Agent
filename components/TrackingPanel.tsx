@@ -7,6 +7,7 @@ import type { TrackResult } from "@/lib/track";
 interface StoredRank {
   query: string;
   position: number | null;
+  scanned?: number;
   checkedAt: Date | string | null;
 }
 interface StoredAivis {
@@ -39,8 +40,12 @@ export function TrackingPanel({ courseId, hasKeywords, initialRanks, initialAivi
   }
 
   const ranks = live
-    ? live.ranks.map((r) => ({ query: r.keyword, position: r.position, checkedAt: new Date() }))
+    ? live.ranks.map((r) => ({ query: r.keyword, position: r.position, scanned: r.scanned, checkedAt: new Date() }))
     : initialRanks;
+
+  // Warn immediately after a live run when every keyword returned 0 SERP results —
+  // that indicates an API key issue rather than a genuine absence of ranking.
+  const serpFailed = live != null && ranks.every((r) => (r.scanned ?? 1) === 0);
   const aivis = live
     ? live.aivis.engines.map((e) => ({
         engine: e.engine,
@@ -69,11 +74,18 @@ export function TrackingPanel({ courseId, hasKeywords, initialRanks, initialAivi
         </button>
       </div>
       <p className="mb-3 text-xs text-gray-400">
-        Web rank is a DuckDuckGo SERP proxy (Google blocks scrapers). AI visibility
-        asks Gemini (Google-search grounded) and reports a mention rate. Takes ~10–20s.
+        Web rank checks your position in search results for each keyword via the
+        configured SERP provider (Serper or DuckDuckGo). AI visibility asks Gemini
+        (Google-search grounded) and reports a mention rate. Takes ~10–20s.
       </p>
 
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      {serpFailed && (
+        <p className="mb-3 rounded bg-amber-50 px-2 py-1 text-sm text-amber-700">
+          SERP returned 0 results for all keywords — your API key may be invalid or the
+          provider is unreachable. Check Settings.
+        </p>
+      )}
 
       {/* Web rank */}
       <div className="mb-4">

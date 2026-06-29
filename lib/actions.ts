@@ -534,10 +534,15 @@ export async function trackCourseAction(
 }
 
 /** Delete a course (and its cascade) from memory. */
-export async function deleteCourse(courseId: number): Promise<{ ok: boolean }> {
-  if (!isDbConfigured()) return { ok: false };
-  const db = getDb();
-  await db.delete(courses).where(eq(courses.id, courseId));
-  revalidatePath("/");
-  return { ok: true };
+export async function deleteCourse(courseId: number): Promise<{ ok: boolean; error?: string }> {
+  if (!isDbConfigured()) return { ok: false, error: "Database not configured" };
+  try {
+    const db = getDb();
+    await db.delete(courses).where(eq(courses.id, courseId));
+    revalidatePath("/");
+    return { ok: true };
+  } catch (e) {
+    console.error("deleteCourse failed:", e);
+    return { ok: false, error: (e as Error).message };
+  }
 }

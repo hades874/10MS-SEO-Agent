@@ -2,7 +2,7 @@ import Link from "next/link";
 import { systemStatus } from "@/lib/status";
 import { listCourses, type CourseListItem } from "@/lib/queries";
 import { SetupBanner } from "@/components/SetupBanner";
-import { ScoreBadge } from "@/components/ScoreBadge";
+import { CourseList } from "@/components/CourseList";
 
 export const dynamic = "force-dynamic";
 
@@ -55,42 +55,7 @@ export default async function Dashboard() {
           or <Link href="/courses/new" className="text-brand underline">add a course</Link>.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="w-full text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs uppercase text-gray-500">
-              <tr>
-                <th className="px-4 py-2">Course</th>
-                <th className="px-4 py-2">Level</th>
-                <th className="px-4 py-2">Subject</th>
-                <th className="px-4 py-2">Type</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2">Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {coursesList.map((c) => (
-                <tr key={c.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                  <td className="px-4 py-2">
-                    <Link href={`/courses/${c.id}`} className="font-medium text-brand-dark hover:underline">
-                      {c.name}
-                    </Link>
-                    {c.completeness === "partial" && (
-                      <span className="ml-2 rounded bg-orange-100 px-1.5 py-0.5 text-[10px] text-orange-700">
-                        partial
-                      </span>
-                    )}
-                    {c.slug && <div className="text-xs text-gray-400">/{c.slug}</div>}
-                  </td>
-                  <td className="px-4 py-2 text-gray-600">{c.level ?? "—"}</td>
-                  <td className="px-4 py-2 text-gray-600">{c.subject ?? "—"}</td>
-                  <td className="px-4 py-2 text-gray-600">{c.batchType ?? "—"}</td>
-                  <td className="px-4 py-2 text-gray-600">{c.status}</td>
-                  <td className="px-4 py-2"><ScoreBadge score={c.score} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <CourseList courses={coursesList} />
       )}
     </div>
   );

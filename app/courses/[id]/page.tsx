@@ -7,6 +7,7 @@ import { TrackingPanel } from "@/components/TrackingPanel";
 import { SeoEditor } from "@/components/SeoEditor";
 import { VersionHistory } from "@/components/VersionHistory";
 import { ExportPanel } from "@/components/ExportPanel";
+import { DeleteCourseButton } from "@/components/DeleteCourseButton";
 import type { GeneratedCopy } from "@/lib/generate/types";
 
 export const dynamic = "force-dynamic";
@@ -60,8 +61,9 @@ export default async function CourseDetail({
             {course.slug && <> · /{course.slug}</>}
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-500">
+        <div className="flex items-center gap-3 text-sm text-gray-500">
           Score <ScoreBadge score={record?.validationScore ?? null} />
+          <DeleteCourseButton courseId={course.id} />
         </div>
       </div>
 
