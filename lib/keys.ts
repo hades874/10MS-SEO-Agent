@@ -71,7 +71,25 @@ export async function getApiKey(name: string): Promise<string | undefined> {
   return process.env[name] || undefined;
 }
 
+export type ApiKeyStatus = "custom" | "default" | "none";
+
 /** True if the key is set in either the request cookie or the server env. */
 export async function hasApiKey(name: string): Promise<boolean> {
   return Boolean(await getApiKey(name));
+}
+
+/** Returns the status of the API key: custom (cookie), default (env), or none. */
+export async function getApiKeyStatus(name: string): Promise<ApiKeyStatus> {
+  try {
+    const { cookies } = await import("next/headers");
+    const store = await cookies();
+    if (store.has(`${COOKIE_PREFIX}${name}`)) {
+      const value = store.get(`${COOKIE_PREFIX}${name}`)?.value;
+      if (value) return "custom";
+    }
+  } catch {
+    // No request scope (scripts/build) or next/headers unavailable — use env.
+  }
+  if (process.env[name]) return "default";
+  return "none";
 }

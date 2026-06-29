@@ -40,9 +40,9 @@ export interface GeneratedCopy {
   metaDescEn: string;
   keywords: string[];
   ogTitleBn: string;
-  ogTitleEn: string;
+  ogTitleEn?: string;
   ogDescriptionBn: string;
-  ogDescriptionEn: string;
+  ogDescriptionEn?: string;
   ogImageAlt: string;
   imageNameThumb: string;
   imageNameSqr: string;

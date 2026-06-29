@@ -14,7 +14,7 @@ interface ManagedKey {
  * each key is "configured". Saving sends only the fields the user actually typed.
  */
 export function ApiKeysForm({ managed }: { managed: ManagedKey[] }) {
-  const [status, setStatus] = useState<Record<string, boolean>>({});
+  const [status, setStatus] = useState<Record<string, "custom" | "default" | "none">>({});
   const [values, setValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -98,9 +98,13 @@ export function ApiKeysForm({ managed }: { managed: ManagedKey[] }) {
             <label className="text-sm font-medium text-gray-800">{k.label}</label>
             {loading ? (
               <span className="text-xs text-gray-400">…</span>
-            ) : status[k.name] ? (
+            ) : status[k.name] === "custom" ? (
               <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
-                configured
+                configured (custom)
+              </span>
+            ) : status[k.name] === "default" ? (
+              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                configured (default)
               </span>
             ) : (
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
@@ -116,7 +120,7 @@ export function ApiKeysForm({ managed }: { managed: ManagedKey[] }) {
             onChange={(e) =>
               setValues((v) => ({ ...v, [k.name]: e.target.value }))
             }
-            placeholder={status[k.name] ? "•••••••• (set — type to replace)" : "Paste key…"}
+            placeholder={status[k.name] === "custom" ? "•••••••• (custom set — type to replace)" : status[k.name] === "default" ? "•••••••• (default set — type to override)" : "Paste key…"}
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
           />
         </div>

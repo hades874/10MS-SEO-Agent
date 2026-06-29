@@ -11,9 +11,7 @@ export interface ExportData {
   metaDescEn: string | null;
   keywords: string[] | null;
   ogTitleBn: string | null;
-  ogTitleEn: string | null;
   ogDescriptionBn: string | null;
-  ogDescriptionEn: string | null;
   ogImage: string | null;
   ogImageAlt: string | null;
   schemaJsonld: Record<string, unknown> | null;
@@ -29,12 +27,9 @@ function buildHtml(d: ExportData): string {
     d.keywords?.length ? `<meta name="keywords" content="${esc(d.keywords.join(", "))}" />` : "",
     `<meta property="og:locale" content="bn_BD" />`,
     `<meta property="og:locale:alternate" content="en_US" />`,
-    `<!-- Open Graph (Bangla) -->`,
+    `<!-- Open Graph -->`,
     `<meta property="og:title" content="${esc(d.ogTitleBn)}" />`,
     `<meta property="og:description" content="${esc(d.ogDescriptionBn)}" />`,
-    `<!-- Open Graph (English) -->`,
-    `<meta property="og:title" content="${esc(d.ogTitleEn)}" />`,
-    `<meta property="og:description" content="${esc(d.ogDescriptionEn)}" />`,
     d.ogImage ? `<meta property="og:image" content="${esc(d.ogImage)}" />` : "",
     d.ogImageAlt ? `<meta property="og:image:alt" content="${esc(d.ogImageAlt)}" />` : "",
     d.productUrl ? `<meta property="og:url" content="${esc(d.productUrl)}" />` : "",
@@ -54,8 +49,8 @@ function buildJson(d: ExportData): string {
       metaDescription: { bn: d.metaDescBn, en: d.metaDescEn },
       keywords: d.keywords ?? [],
       openGraph: {
-        title: { bn: d.ogTitleBn, en: d.ogTitleEn },
-        description: { bn: d.ogDescriptionBn, en: d.ogDescriptionEn },
+        title: d.ogTitleBn,
+        description: d.ogDescriptionBn,
         image: d.ogImage,
         imageAlt: d.ogImageAlt,
       },
@@ -73,10 +68,8 @@ function buildPlain(d: ExportData): string {
     `Meta description (BN): ${d.metaDescBn ?? ""}`,
     `Meta description (EN): ${d.metaDescEn ?? ""}`,
     `Keywords: ${(d.keywords ?? []).join(", ")}`,
-    `og:title (BN): ${d.ogTitleBn ?? ""}`,
-    `og:title (EN): ${d.ogTitleEn ?? ""}`,
-    `og:description (BN): ${d.ogDescriptionBn ?? ""}`,
-    `og:description (EN): ${d.ogDescriptionEn ?? ""}`,
+    `og:title: ${d.ogTitleBn ?? ""}`,
+    `og:description: ${d.ogDescriptionBn ?? ""}`,
     `og:image: ${d.ogImage ?? ""}`,
     `og:image:alt: ${d.ogImageAlt ?? ""}`,
   ].join("\n");

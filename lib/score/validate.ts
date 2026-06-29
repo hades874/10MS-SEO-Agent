@@ -130,12 +130,10 @@ export function scoreRecord(
   f.bilingual = filled / 4;
   if (filled < 4) issues.push(`${4 - filled} bilingual copy field(s) missing`);
 
-  // 5. OG completeness (bilingual title + description + image)
+  // 5. OG completeness (title + description + image)
   const ogFields = [
     rec.ogTitleBn,
-    rec.ogTitleEn,
     rec.ogDescriptionBn,
-    rec.ogDescriptionEn,
     rec.ogImage,
   ];
   const ogFilled = ogFields.filter((x) => x && x.trim()).length;

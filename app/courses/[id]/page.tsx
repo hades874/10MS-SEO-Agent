@@ -102,11 +102,11 @@ export default async function CourseDetail({
           <Section title="Open Graph">
             <div className="mb-3">
               <p className="mb-1 text-xs text-gray-400">og:title</p>
-              <Bilingual bn={record.ogTitleBn} en={record.ogTitleEn} />
+              <div className="text-sm">{record.ogTitleBn ?? <span className="text-gray-400">—</span>}</div>
             </div>
             <div className="mb-3">
               <p className="mb-1 text-xs text-gray-400">og:description</p>
-              <Bilingual bn={record.ogDescriptionBn} en={record.ogDescriptionEn} />
+              <div className="text-sm">{record.ogDescriptionBn ?? <span className="text-gray-400">—</span>}</div>
             </div>
             <Field label="og:image" value={record.ogImage} />
           </Section>

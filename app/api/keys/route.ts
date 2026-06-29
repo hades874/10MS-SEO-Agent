@@ -4,7 +4,8 @@ import {
   COOKIE_PREFIX,
   MANAGED_KEYS,
   isManagedKey,
-  hasApiKey,
+  ApiKeyStatus,
+  getApiKeyStatus,
 } from "@/lib/keys";
 
 export const dynamic = "force-dynamic";
@@ -18,9 +19,9 @@ const COOKIE_OPTS = {
 } as const;
 
 /** Which managed keys are currently set (cookie OR env). Names only, never values. */
-async function statusMap(): Promise<Record<string, boolean>> {
+async function statusMap(): Promise<Record<string, ApiKeyStatus>> {
   const entries = await Promise.all(
-    MANAGED_KEYS.map(async (k) => [k.name, await hasApiKey(k.name)] as const)
+    MANAGED_KEYS.map(async (k) => [k.name, await getApiKeyStatus(k.name)] as const)
   );
   return Object.fromEntries(entries);
 }
