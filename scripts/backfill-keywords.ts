@@ -14,7 +14,7 @@ import { sleep, withQuotaRetry } from "../lib/util/throttle";
  *   npm run backfill:keywords
  */
 async function main() {
-  if (!isAiConfigured()) {
+  if (!(await isAiConfigured())) {
     console.error("No AI key set — add GOOGLE_GENERATIVE_AI_API_KEY to .env.local");
     process.exit(1);
   }
@@ -30,8 +30,10 @@ async function main() {
       metaDescBn: seoRecords.metaDescBn,
       metaDescEn: seoRecords.metaDescEn,
       metaTitleBn: seoRecords.metaTitleBn,
-      ogTitle: seoRecords.ogTitle,
-      ogDescription: seoRecords.ogDescription,
+      ogTitleBn: seoRecords.ogTitleBn,
+      ogTitleEn: seoRecords.ogTitleEn,
+      ogDescriptionBn: seoRecords.ogDescriptionBn,
+      ogDescriptionEn: seoRecords.ogDescriptionEn,
       ogImage: seoRecords.ogImage,
       imageAltThumb: seoRecords.imageAltThumb,
       imageAltSqr: seoRecords.imageAltSqr,

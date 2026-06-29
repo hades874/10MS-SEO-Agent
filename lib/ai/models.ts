@@ -1,61 +1,84 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { EmbeddingModel, LanguageModel } from "ai";
+import { getApiKey } from "../keys";
 
 /**
  * Provider layer. Defaults to Google Gemini (free tier covers BOTH chat AND
  * embeddings). OpenRouter is supported for chat models, but it has no embeddings —
  * so a Google key is still required for semantic recall.
  *
- * Env:
+ * Keys are resolved PER REQUEST (browser cookie first, then env) via getApiKey, so
+ * every accessor here is async. Callers are already in async contexts — `await`
+ * the factory before use.
+ *
  *   GOOGLE_GENERATIVE_AI_API_KEY  — Gemini key from https://aistudio.google.com/apikey
  *   OPENROUTER_API_KEY            — optional, for chat via OpenRouter
  *   AI_PROVIDER                   — "google" (default) | "openrouter" (chat only)
  *   SEO_DRAFT_MODEL / SEO_TAG_MODEL / SEO_EMBED_MODEL — overridable model ids
  */
 
-const GOOGLE_KEY = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
+export type AiProvider = "google" | "openrouter";
 
-const PROVIDER = (
-  process.env.AI_PROVIDER?.toLowerCase() ||
-  (OPENROUTER_KEY && !GOOGLE_KEY ? "openrouter" : "google")
-) as "google" | "openrouter";
-
-// Defaults differ per provider (OpenRouter ids are namespaced).
-export const DRAFT_MODEL_ID =
-  process.env.SEO_DRAFT_MODEL ??
-  (PROVIDER === "openrouter" ? "google/gemini-2.5-flash" : "gemini-2.5-flash");
-export const TAG_MODEL_ID =
-  process.env.SEO_TAG_MODEL ??
-  (PROVIDER === "openrouter" ? "google/gemini-2.5-flash-lite" : "gemini-2.5-flash-lite");
-export const EMBED_MODEL_ID =
-  process.env.SEO_EMBED_MODEL ?? "gemini-embedding-001";
-
-export const ACTIVE_PROVIDER = PROVIDER;
-
-function google() {
-  return createGoogleGenerativeAI({ apiKey: GOOGLE_KEY });
-}
-function openrouter() {
-  return createOpenRouter({ apiKey: OPENROUTER_KEY });
+async function aiKeys() {
+  const [google, openrouter] = await Promise.all([
+    getApiKey("GOOGLE_GENERATIVE_AI_API_KEY"),
+    getApiKey("OPENROUTER_API_KEY"),
+  ]);
+  return { google, openrouter };
 }
 
-export function draftModel(): LanguageModel {
-  return PROVIDER === "openrouter"
-    ? openrouter().chat(DRAFT_MODEL_ID)
-    : google()(DRAFT_MODEL_ID);
+/** Which provider to use this request. AI_PROVIDER env wins; else infer from keys. */
+export async function activeProvider(): Promise<AiProvider> {
+  const env = process.env.AI_PROVIDER?.toLowerCase();
+  if (env === "google" || env === "openrouter") return env;
+  const { google, openrouter } = await aiKeys();
+  return openrouter && !google ? "openrouter" : "google";
 }
 
-export function tagModel(): LanguageModel {
-  return PROVIDER === "openrouter"
-    ? openrouter().chat(TAG_MODEL_ID)
-    : google()(TAG_MODEL_ID);
+// Model ids differ per provider (OpenRouter ids are namespaced).
+export async function draftModelId(): Promise<string> {
+  if (process.env.SEO_DRAFT_MODEL) return process.env.SEO_DRAFT_MODEL;
+  return (await activeProvider()) === "openrouter"
+    ? "google/gemini-2.5-flash"
+    : "gemini-2.5-flash";
+}
+export async function tagModelId(): Promise<string> {
+  if (process.env.SEO_TAG_MODEL) return process.env.SEO_TAG_MODEL;
+  return (await activeProvider()) === "openrouter"
+    ? "google/gemini-2.5-flash-lite"
+    : "gemini-2.5-flash-lite";
+}
+export function embedModelId(): string {
+  return process.env.SEO_EMBED_MODEL ?? "gemini-embedding-001";
+}
+
+async function google() {
+  const { google: key } = await aiKeys();
+  return createGoogleGenerativeAI({ apiKey: key });
+}
+async function openrouter() {
+  const { openrouter: key } = await aiKeys();
+  return createOpenRouter({ apiKey: key });
+}
+
+export async function draftModel(): Promise<LanguageModel> {
+  if ((await activeProvider()) === "openrouter") {
+    return (await openrouter()).chat(await draftModelId());
+  }
+  return (await google())(await draftModelId());
+}
+
+export async function tagModel(): Promise<LanguageModel> {
+  if ((await activeProvider()) === "openrouter") {
+    return (await openrouter()).chat(await tagModelId());
+  }
+  return (await google())(await tagModelId());
 }
 
 /** Embeddings are Google-only (OpenRouter has none). */
-export function embedModel(): EmbeddingModel {
-  return google().textEmbeddingModel(EMBED_MODEL_ID);
+export async function embedModel(): Promise<EmbeddingModel> {
+  return (await google()).textEmbeddingModel(embedModelId());
 }
 
 /**
@@ -65,25 +88,27 @@ export function embedModel(): EmbeddingModel {
  * (flash-lite already defaults to no thinking; budget 0 is a safe no-op there.)
  * Returns undefined for OpenRouter — leave its provider defaults alone.
  */
-export function chatProviderOptions() {
-  if (PROVIDER === "openrouter") return undefined;
+export async function chatProviderOptions() {
+  if ((await activeProvider()) === "openrouter") return undefined;
   return { google: { thinkingConfig: { thinkingBudget: 0 } } } as const;
 }
 
 /** Gemini model + Google Search grounding tool, for AI-search visibility checks. */
-export function googleSearchModel(): LanguageModel {
-  return google()(DRAFT_MODEL_ID);
+export async function googleSearchModel(): Promise<LanguageModel> {
+  return (await google())(await draftModelId());
 }
-export function googleSearchTool() {
-  return google().tools.googleSearch({});
+export async function googleSearchTool() {
+  return (await google()).tools.googleSearch({});
 }
 
 /** Chat (generation/tagging) is configured if either provider key is present. */
-export function isAiConfigured() {
-  return Boolean(GOOGLE_KEY || OPENROUTER_KEY);
+export async function isAiConfigured(): Promise<boolean> {
+  const { google, openrouter } = await aiKeys();
+  return Boolean(google || openrouter);
 }
 
 /** Embeddings + semantic recall require a Google key specifically. */
-export function isEmbeddingConfigured() {
-  return Boolean(GOOGLE_KEY);
+export async function isEmbeddingConfigured(): Promise<boolean> {
+  const { google } = await aiKeys();
+  return Boolean(google);
 }

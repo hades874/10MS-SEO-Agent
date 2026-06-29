@@ -7,7 +7,7 @@ import { ScoreBadge } from "@/components/ScoreBadge";
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
-  const status = systemStatus();
+  const status = await systemStatus();
   let coursesList: CourseListItem[] = [];
   let loadError: string | null = null;
   try {

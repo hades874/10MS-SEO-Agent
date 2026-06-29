@@ -6,9 +6,9 @@ import {
   embedModel,
   isAiConfigured,
   isEmbeddingConfigured,
-  DRAFT_MODEL_ID,
-  EMBED_MODEL_ID,
-  ACTIVE_PROVIDER,
+  draftModelId,
+  embedModelId,
+  activeProvider,
 } from "../lib/ai/models";
 
 /**
@@ -54,8 +54,10 @@ async function checkDb(): Promise<boolean> {
 }
 
 async function checkAi(): Promise<boolean> {
-  console.log(`\nAI provider (${ACTIVE_PROVIDER})`);
-  if (!isAiConfigured()) {
+  const draftId = await draftModelId();
+  const embedId = embedModelId();
+  console.log(`\nAI provider (${await activeProvider()})`);
+  if (!(await isAiConfigured())) {
     fail("No AI key set — add GOOGLE_GENERATIVE_AI_API_KEY (or OPENROUTER_API_KEY) to .env.local");
     return false;
   }
@@ -64,31 +66,31 @@ async function checkAi(): Promise<boolean> {
   let pass = true;
   try {
     const { text } = await generateText({
-      model: draftModel(),
+      model: await draftModel(),
       prompt: "Reply with exactly: OK",
       maxOutputTokens: 5,
     });
-    ok(`Draft model works (${DRAFT_MODEL_ID}, replied "${text.trim()}")`);
+    ok(`Draft model works (${draftId}, replied "${text.trim()}")`);
   } catch (e) {
-    fail(`Draft model failed (${DRAFT_MODEL_ID}): ${(e as Error).message}`);
+    fail(`Draft model failed (${draftId}): ${(e as Error).message}`);
     pass = false;
   }
 
-  if (!isEmbeddingConfigured()) {
+  if (!(await isEmbeddingConfigured())) {
     fail("Embeddings need GOOGLE_GENERATIVE_AI_API_KEY (OpenRouter has none) — semantic recall will be disabled");
     return false;
   }
   try {
     const { embedding } = await embed({
-      model: embedModel(),
+      model: await embedModel(),
       value: "test",
-      providerOptions: EMBED_MODEL_ID.includes("gemini-embedding")
+      providerOptions: embedId.includes("gemini-embedding")
         ? { google: { outputDimensionality: 768 } }
         : undefined,
     });
-    ok(`Embeddings work (${EMBED_MODEL_ID}, ${embedding.length} dims)`);
+    ok(`Embeddings work (${embedId}, ${embedding.length} dims)`);
   } catch (e) {
-    fail(`Embedding model failed (${EMBED_MODEL_ID}): ${(e as Error).message}`);
+    fail(`Embedding model failed (${embedId}): ${(e as Error).message}`);
     pass = false;
   }
   return pass;

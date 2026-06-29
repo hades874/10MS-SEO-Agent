@@ -6,6 +6,6 @@ export interface SystemStatus {
   ai: boolean;
 }
 
-export function systemStatus(): SystemStatus {
-  return { db: isDbConfigured(), ai: isAiConfigured() };
+export async function systemStatus(): Promise<SystemStatus> {
+  return { db: isDbConfigured(), ai: await isAiConfigured() };
 }

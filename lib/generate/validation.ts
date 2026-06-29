@@ -39,14 +39,36 @@ export const GeneratedCopySchema = z.object({
   metaDescBn: copyText,
   metaDescEn: copyText,
   keywords: z.array(z.string().max(100)).max(50),
-  ogTitle: copyText,
-  ogDescription: copyText,
+  ogTitleBn: copyText,
+  ogTitleEn: copyText,
+  ogDescriptionBn: copyText,
+  ogDescriptionEn: copyText,
   ogImageAlt: copyText,
   imageNameThumb: copyText,
   imageNameSqr: copyText,
   imageAltThumb: copyText,
   imageAltSqr: copyText,
 }) satisfies z.ZodType<GeneratedCopy>;
+
+/**
+ * Input for the PDP comparison action — two public page URLs and optional target
+ * keywords. URLs flow into fetch() and the prompt, so we bound + shape them here.
+ */
+export const ComparePdpsInputSchema = z.object({
+  ourUrl: z.string().trim().min(1, "Your page URL is required").max(2000).url("Your page must be a valid URL"),
+  competitorUrls: z
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1)
+        .max(2000)
+        .url("Each competitor must be a valid URL")
+    )
+    .min(1, "Add at least one competitor URL")
+    .max(5, "Compare up to 5 competitors at a time"),
+  targetKeywords: z.array(z.string().max(100)).max(50).optional(),
+});
 
 /** First human-readable issue from a Zod error, prefixed with its field path. */
 export function firstIssue(error: z.ZodError): string {

@@ -8,12 +8,15 @@ import {
   seoEmbeddings,
   keywordResearch,
   validationScores,
+  pdpComparisons,
   type Course,
 } from "./db/schema";
 import { eq } from "drizzle-orm";
 import { type KeywordResearch } from "./keywords/autocomplete";
 import { researchKeywordVia, activeKeywordProvider } from "./keywords/provider";
 import { analyzeCompetitors, type AnalyzeResult } from "./competitors/analyze";
+import { comparePdps } from "./pdp/compare";
+import type { PdpComparisonResult } from "./pdp/types";
 import { trackCourse, type TrackResult } from "./track";
 import { getCourseDetail, getCourseVersions } from "./queries";
 import { deriveFacets } from "./util/facets";
@@ -25,6 +28,7 @@ import { buildProductSchema } from "./generate/buildSchema";
 import {
   CourseInputSchema,
   GeneratedCopySchema,
+  ComparePdpsInputSchema,
   firstIssue,
 } from "./generate/validation";
 import { scoreRecord, type ScoreResult } from "./score/validate";
@@ -85,8 +89,10 @@ async function writeSeoVersion(
       metaDescBn: copy.metaDescBn,
       metaDescEn: copy.metaDescEn,
       keywords: copy.keywords,
-      ogTitle: copy.ogTitle,
-      ogDescription: copy.ogDescription,
+      ogTitleBn: copy.ogTitleBn,
+      ogTitleEn: copy.ogTitleEn,
+      ogDescriptionBn: copy.ogDescriptionBn,
+      ogDescriptionEn: copy.ogDescriptionEn,
       ogImage: course.imageUrl,
       imageAltThumb: copy.imageAltThumb,
       imageAltSqr: copy.imageAltSqr,
@@ -104,7 +110,7 @@ async function writeSeoVersion(
   // persist the record + history, just without refreshing the vector.
   let embedding: number[] | null = null;
   let sourceText = "";
-  if (isAiConfigured()) {
+  if (await isAiConfigured()) {
     try {
       sourceText = buildEmbedSourceText({
         name: course.name,
@@ -130,8 +136,10 @@ async function writeSeoVersion(
       metaDescBn: copy.metaDescBn,
       metaDescEn: copy.metaDescEn,
       keywords: copy.keywords,
-      ogTitle: copy.ogTitle,
-      ogDescription: copy.ogDescription,
+      ogTitleBn: copy.ogTitleBn,
+      ogTitleEn: copy.ogTitleEn,
+      ogDescriptionBn: copy.ogDescriptionBn,
+      ogDescriptionEn: copy.ogDescriptionEn,
       ogImage: course.imageUrl,
       ogImageAlt: copy.ogImageAlt,
       imageNameThumb: copy.imageNameThumb,
@@ -180,11 +188,11 @@ export async function generateForNewCourse(
   raw: CourseInput
 ): Promise<GenerateActionResult> {
   try {
-    if (!isAiConfigured()) {
+    if (!(await isAiConfigured())) {
       return {
         ok: false,
         error:
-          "AI not configured. Add GOOGLE_GENERATIVE_AI_API_KEY to .env.local (free key at https://aistudio.google.com/apikey).",
+          "AI not configured. Set your Gemini key in Settings (free key at https://aistudio.google.com/apikey), or add GOOGLE_GENERATIVE_AI_API_KEY to .env.local for local dev.",
       };
     }
     const parsed = CourseInputSchema.safeParse(raw);
@@ -408,7 +416,7 @@ export async function keywordResearchAction(
           suggestions: research.suggestions,
           related: research.related,
           approxDemandSignal: research.demandSignal,
-          source: activeKeywordProvider(),
+          source: await activeKeywordProvider(),
         });
       } catch (e) {
         // Caching is best-effort; the research result is still returned.
@@ -438,6 +446,55 @@ export async function analyzeCompetitorsAction(
     return { ok: true, result };
   } catch (e) {
     console.error("analyzeCompetitorsAction failed:", e);
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+export interface ComparePdpsActionResult {
+  ok: boolean;
+  error?: string;
+  comparison?: PdpComparisonResult;
+}
+
+/** Compare our course PDP head-to-head against a field of competitors and return SEO insights. */
+export async function comparePdpsAction(
+  ourUrl: string,
+  competitorUrls: string[],
+  targetKeywords: string[] = []
+): Promise<ComparePdpsActionResult> {
+  try {
+    const parsed = ComparePdpsInputSchema.safeParse({
+      ourUrl,
+      competitorUrls,
+      targetKeywords,
+    });
+    if (!parsed.success) {
+      return { ok: false, error: firstIssue(parsed.error) };
+    }
+    const { ourUrl: a, competitorUrls: rivals, targetKeywords: kws } = parsed.data;
+
+    const comparison = await comparePdps(a, rivals, { targetKeywords: kws ?? [] });
+
+    if (isDbConfigured()) {
+      try {
+        await getDb().insert(pdpComparisons).values({
+          ourUrl: comparison.ours.url,
+          competitorUrls: comparison.competitors.map((c) => c.url),
+          targetKeywords: comparison.targetKeywords,
+          ourSnapshot: comparison.ours.page,
+          competitorSnapshots: comparison.competitors.map((c) => c.page),
+          ourScore: comparison.ours.score.total,
+          competitorScores: comparison.competitors.map((c) => c.score.total),
+          analysis: comparison.analysis,
+        });
+      } catch (e) {
+        // Caching is best-effort; the comparison is still returned.
+        console.error("comparePdpsAction: cache write failed:", e);
+      }
+    }
+    return { ok: true, comparison };
+  } catch (e) {
+    console.error("comparePdpsAction failed:", e);
     return { ok: false, error: (e as Error).message };
   }
 }

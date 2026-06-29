@@ -35,8 +35,10 @@ export default async function CourseDetail({
         metaDescBn: record.metaDescBn ?? "",
         metaDescEn: record.metaDescEn ?? "",
         keywords: record.keywords ?? [],
-        ogTitle: record.ogTitle ?? "",
-        ogDescription: record.ogDescription ?? "",
+        ogTitleBn: record.ogTitleBn ?? "",
+        ogTitleEn: record.ogTitleEn ?? "",
+        ogDescriptionBn: record.ogDescriptionBn ?? "",
+        ogDescriptionEn: record.ogDescriptionEn ?? "",
         ogImageAlt: record.ogImageAlt ?? "",
         imageNameThumb: record.imageNameThumb ?? "",
         imageNameSqr: record.imageNameSqr ?? "",
@@ -98,8 +100,14 @@ export default async function CourseDetail({
             </div>
           </Section>
           <Section title="Open Graph">
-            <Field label="og:title" value={record.ogTitle} />
-            <Field label="og:description" value={record.ogDescription} />
+            <div className="mb-3">
+              <p className="mb-1 text-xs text-gray-400">og:title</p>
+              <Bilingual bn={record.ogTitleBn} en={record.ogTitleEn} />
+            </div>
+            <div className="mb-3">
+              <p className="mb-1 text-xs text-gray-400">og:description</p>
+              <Bilingual bn={record.ogDescriptionBn} en={record.ogDescriptionEn} />
+            </div>
             <Field label="og:image" value={record.ogImage} />
           </Section>
           <Section title="Images">
@@ -156,8 +164,10 @@ export default async function CourseDetail({
               metaDescBn: record.metaDescBn,
               metaDescEn: record.metaDescEn,
               keywords: record.keywords,
-              ogTitle: record.ogTitle,
-              ogDescription: record.ogDescription,
+              ogTitleBn: record.ogTitleBn,
+              ogTitleEn: record.ogTitleEn,
+              ogDescriptionBn: record.ogDescriptionBn,
+              ogDescriptionEn: record.ogDescriptionEn,
               ogImage: record.ogImage,
               ogImageAlt: record.ogImageAlt,
               schemaJsonld: record.schemaJsonld,

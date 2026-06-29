@@ -11,6 +11,7 @@ import {
   index,
   unique,
 } from "drizzle-orm/pg-core";
+import type { ParsedPdp, PdpGapAnalysis } from "../pdp/types";
 
 /**
  * Embedding dimensions. Default 768 matches Google's text-embedding-004 (the free
@@ -62,8 +63,10 @@ export const seoRecords = pgTable("seo_records", {
   metaDescBn: text("meta_desc_bn"),
   metaDescEn: text("meta_desc_en"),
   keywords: jsonb("keywords").$type<string[]>(),
-  ogTitle: text("og_title"),
-  ogDescription: text("og_description"),
+  ogTitleBn: text("og_title_bn"),
+  ogTitleEn: text("og_title_en"),
+  ogDescriptionBn: text("og_description_bn"),
+  ogDescriptionEn: text("og_description_en"),
   ogImage: text("og_image"),
   ogImageAlt: text("og_image_alt"),
   imageNameThumb: text("image_name_thumb"),
@@ -126,6 +129,25 @@ export const competitorSnapshots = pgTable("competitor_snapshots", {
   validationScore: integer("validation_score"),
   rawHtmlRef: text("raw_html_ref"),
   fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+});
+
+/**
+ * PDP head-to-head comparisons (Phase 5). Unlike competitor_snapshots (which is
+ * SERP-discovery driven, one row per ranking URL), this stores one row per
+ * user-initiated comparison: our page vs a field of competitors, the parsed
+ * on-page snapshots, all scores, and the AI gap analysis (null when AI is off).
+ */
+export const pdpComparisons = pgTable("pdp_comparisons", {
+  id: serial("id").primaryKey(),
+  ourUrl: text("our_url").notNull(),
+  competitorUrls: jsonb("competitor_urls").$type<string[]>(),
+  targetKeywords: jsonb("target_keywords").$type<string[]>(),
+  ourSnapshot: jsonb("our_snapshot").$type<ParsedPdp>(),
+  competitorSnapshots: jsonb("competitor_snapshots").$type<ParsedPdp[]>(),
+  ourScore: integer("our_score"),
+  competitorScores: jsonb("competitor_scores").$type<number[]>(),
+  analysis: jsonb("analysis").$type<PdpGapAnalysis | null>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 /** Keyword research cache (Phase 2). */

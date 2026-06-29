@@ -23,8 +23,10 @@ const copySchema = z.object({
   metaDescBn: z.string().describe("Bangla meta description, 70–160 visible chars"),
   metaDescEn: z.string().describe("English meta description, 70–160 visible chars"),
   keywords: z.array(z.string()).min(3).max(6).describe("3–6 SEO keywords, each ≤50 chars"),
-  ogTitle: z.string(),
-  ogDescription: z.string(),
+  ogTitleBn: z.string().describe("Bangla Open Graph title, majority Bangla"),
+  ogTitleEn: z.string().describe("English Open Graph title, majority Latin"),
+  ogDescriptionBn: z.string().describe("Bangla Open Graph description, majority Bangla"),
+  ogDescriptionEn: z.string().describe("English Open Graph description, majority Latin"),
   ogImageAlt: z.string(),
   imageNameThumb: z.string().describe("lowercase hyphenated, ends with -thumbnail"),
   imageNameSqr: z.string().describe("lowercase hyphenated, ends with -sqr-thumbnail"),
@@ -79,13 +81,16 @@ export async function generateSeo(
   const maxRepairs = opts.maxRepairs ?? 2;
   const userPrompt = buildUserPrompt(input, exemplars, style);
 
+  const model = await draftModel();
+  const providerOptions = await chatProviderOptions();
+
   let { object: copy } = await withQuotaRetry(() =>
     generateObject({
-      model: draftModel(),
+      model,
       schema: copySchema,
       system: SYSTEM_PROMPT,
       prompt: userPrompt,
-      providerOptions: chatProviderOptions(),
+      providerOptions,
     })
   );
 
@@ -96,11 +101,11 @@ export async function generateSeo(
     // Repair is self-contained (no exemplar/style block) to keep tokens low.
     const res = await withQuotaRetry(() =>
       generateObject({
-        model: draftModel(),
+        model,
         schema: copySchema,
         system: SYSTEM_PROMPT,
         prompt: buildRepairPrompt(copy, violations),
-        providerOptions: chatProviderOptions(),
+        providerOptions,
       })
     );
     copy = res.object;
@@ -125,8 +130,10 @@ export async function generateSeo(
       metaDescBn: copy.metaDescBn,
       metaDescEn: copy.metaDescEn,
       keywords: copy.keywords,
-      ogTitle: copy.ogTitle,
-      ogDescription: copy.ogDescription,
+      ogTitleBn: copy.ogTitleBn,
+      ogTitleEn: copy.ogTitleEn,
+      ogDescriptionBn: copy.ogDescriptionBn,
+      ogDescriptionEn: copy.ogDescriptionEn,
       ogImage: input.imageUrl,
       imageAltThumb: copy.imageAltThumb,
       imageAltSqr: copy.imageAltSqr,

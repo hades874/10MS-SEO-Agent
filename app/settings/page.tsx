@@ -1,19 +1,25 @@
 import { systemConfig, type ProviderStatus } from "@/lib/config";
+import { MANAGED_KEYS } from "@/lib/keys";
+import { ApiKeysForm } from "@/components/ApiKeysForm";
 
 export const dynamic = "force-dynamic";
 
-export default function SettingsPage() {
-  const cfg = systemConfig();
+export default async function SettingsPage() {
+  const cfg = await systemConfig();
 
   return (
     <div className="max-w-3xl space-y-4">
       <div>
         <h1 className="text-2xl font-semibold">Settings</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Read-only view of what&apos;s configured. Change these by editing{" "}
-          <code className="rounded bg-gray-100 px-1">.env.local</code> and restarting.
+          Set your API keys here — they&apos;re saved in your browser, not in the system.
+          The status below reflects your keys (or any <code className="rounded bg-gray-100 px-1">.env.local</code> fallback for local dev).
         </p>
       </div>
+
+      <Card title="API keys">
+        <ApiKeysForm managed={MANAGED_KEYS.map((k) => ({ ...k }))} />
+      </Card>
 
       <Card title="Database">
         <Row status={cfg.db} />

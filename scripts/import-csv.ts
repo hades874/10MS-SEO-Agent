@@ -26,7 +26,7 @@ async function main() {
   const parsed = parseSeedCsv(csv);
   console.log(`Parsed ${parsed.length} courses`);
 
-  if (!noAi && !isAiConfigured()) {
+  if (!noAi && !(await isAiConfigured())) {
     console.warn(
       "⚠ No AI key set — importing WITHOUT embeddings. Semantic recall will be\n" +
         "  limited until you add GOOGLE_GENERATIVE_AI_API_KEY and re-import."

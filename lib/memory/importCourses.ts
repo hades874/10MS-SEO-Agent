@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import type { ParsedCourse } from "./parseCsv";
 import { deriveFacets } from "../util/facets";
 import { deriveKeywords } from "../util/keywords";
+import { detectLang } from "../util/lang";
 import { mineStyle } from "./styleMine";
 import { isAiConfigured, isEmbeddingConfigured } from "../ai/models";
 import { backfillKeywords } from "../ai/backfill";
@@ -36,7 +37,7 @@ export async function importCourses(
   opts: ImportOptions = {}
 ): Promise<ImportSummary> {
   const db = getDb();
-  const useAi = (opts.withAi ?? true) && isAiConfigured();
+  const useAi = (opts.withAi ?? true) && (await isAiConfigured());
   const log = opts.onProgress ?? (() => {});
 
   if (opts.resetSeed) {
@@ -113,6 +114,13 @@ export async function importCourses(
       isFree: facets.isFree,
     });
 
+    // OG mirrors the bilingual meta; the seed's single og:* value is a fallback,
+    // placed into the bn/en slot that matches its actual script.
+    const ogTitleBn = p.metaTitleBn ?? (detectLang(p.ogTitle) === "bn" ? p.ogTitle : null);
+    const ogTitleEn = p.metaTitleEn ?? (detectLang(p.ogTitle) === "en" ? p.ogTitle : null);
+    const ogDescriptionBn = p.metaDescBn ?? (detectLang(p.ogDescription) === "bn" ? p.ogDescription : null);
+    const ogDescriptionEn = p.metaDescEn ?? (detectLang(p.ogDescription) === "en" ? p.ogDescription : null);
+
     const recordValues = {
       courseId: course.id,
       version: 1,
@@ -121,8 +129,10 @@ export async function importCourses(
       metaDescBn: p.metaDescBn,
       metaDescEn: p.metaDescEn,
       keywords,
-      ogTitle: p.ogTitle,
-      ogDescription: p.ogDescription,
+      ogTitleBn,
+      ogTitleEn,
+      ogDescriptionBn,
+      ogDescriptionEn,
       ogImage: p.imageUrl,
       ogImageAlt: p.imageAltThumb,
       imageNameThumb: p.imageNameThumb,
@@ -141,7 +151,7 @@ export async function importCourses(
       .values({ ...recordValues, validationScore: score.total });
 
     // Embedding for semantic recall (requires a Google key)
-    if (isEmbeddingConfigured()) {
+    if (await isEmbeddingConfigured()) {
       try {
         const sourceText = buildEmbedSourceText({
           name: p.name,

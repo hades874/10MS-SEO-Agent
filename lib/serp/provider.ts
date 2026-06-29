@@ -1,4 +1,5 @@
 import { ddgSearch } from "./ddg";
+import { getApiKey } from "../keys";
 
 /**
  * Pluggable SERP provider. Free DuckDuckGo scraping is the keyless default, but it
@@ -10,9 +11,9 @@ import { ddgSearch } from "./ddg";
 
 export type SerpProvider = "serper" | "brave" | "duckduckgo";
 
-export function activeSerpProvider(): SerpProvider {
-  if (process.env.SERPER_API_KEY) return "serper";
-  if (process.env.BRAVE_SEARCH_API_KEY) return "brave";
+export async function activeSerpProvider(): Promise<SerpProvider> {
+  if (await getApiKey("SERPER_API_KEY")) return "serper";
+  if (await getApiKey("BRAVE_SEARCH_API_KEY")) return "brave";
   return "duckduckgo";
 }
 
@@ -21,7 +22,7 @@ async function serperSearch(query: string): Promise<string[]> {
     const res = await fetch("https://google.serper.dev/search", {
       method: "POST",
       headers: {
-        "X-API-KEY": process.env.SERPER_API_KEY!,
+        "X-API-KEY": (await getApiKey("SERPER_API_KEY"))!,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ q: query, gl: "bd", num: 20 }),
@@ -40,7 +41,7 @@ async function braveSearch(query: string): Promise<string[]> {
     const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&country=bd&count=20`;
     const res = await fetch(url, {
       headers: {
-        "X-Subscription-Token": process.env.BRAVE_SEARCH_API_KEY!,
+        "X-Subscription-Token": (await getApiKey("BRAVE_SEARCH_API_KEY"))!,
         Accept: "application/json",
       },
       signal: AbortSignal.timeout(10000),
@@ -55,7 +56,7 @@ async function braveSearch(query: string): Promise<string[]> {
 
 /** Run a web search via the active provider, returning ordered result URLs. */
 export async function serpSearch(query: string): Promise<string[]> {
-  switch (activeSerpProvider()) {
+  switch (await activeSerpProvider()) {
     case "serper":
       return serperSearch(query);
     case "brave":

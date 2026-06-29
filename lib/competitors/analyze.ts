@@ -34,10 +34,10 @@ export async function analyzeCompetitors(
   // Zero raw SERP results means the search provider returned nothing — almost always
   // the keyless DuckDuckGo scraper getting blocked (HTTP 403), not an empty SERP.
   // Surface this as an actionable error instead of a misleading "no competitors found".
-  if (rawResults === 0 && activeSerpProvider() === "duckduckgo") {
+  if (rawResults === 0 && (await activeSerpProvider()) === "duckduckgo") {
     throw new Error(
       "SERP provider returned no results — the keyless DuckDuckGo scraper is being blocked. " +
-        "Set SERPER_API_KEY (serper.dev, free tier) or BRAVE_SEARCH_API_KEY in .env.local to enable competitor discovery."
+        "Add a Serper key (serper.dev, free tier) or Brave Search key in Settings to enable competitor discovery."
     );
   }
 

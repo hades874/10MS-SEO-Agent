@@ -1,12 +1,13 @@
 import { isDbConfigured } from "./db";
 import {
-  ACTIVE_PROVIDER,
-  DRAFT_MODEL_ID,
-  TAG_MODEL_ID,
-  EMBED_MODEL_ID,
+  activeProvider,
+  draftModelId,
+  tagModelId,
+  embedModelId,
   isAiConfigured,
   isEmbeddingConfigured,
 } from "./ai/models";
+import { getApiKey } from "./keys";
 import { activeSerpProvider } from "./serp/provider";
 import { activeKeywordProvider } from "./keywords/provider";
 import { isGscConfigured } from "./rank/gsc";
@@ -35,10 +36,30 @@ export interface SystemConfig {
   brand: { name: string; siteOrigin: string };
 }
 
-/** Read-only snapshot of what's configured (server-side env reads), for /settings. */
-export function systemConfig(): SystemConfig {
-  const serp = activeSerpProvider();
-  const keywords = activeKeywordProvider();
+/** Read-only snapshot of what's configured (cookie/env reads), for /settings. */
+export async function systemConfig(): Promise<SystemConfig> {
+  const [
+    serp,
+    keywords,
+    provider,
+    draftModel,
+    tagModel,
+    aiOk,
+    embedOk,
+    openaiKey,
+    perplexityKey,
+  ] = await Promise.all([
+    activeSerpProvider(),
+    activeKeywordProvider(),
+    activeProvider(),
+    draftModelId(),
+    tagModelId(),
+    isAiConfigured(),
+    isEmbeddingConfigured(),
+    getApiKey("OPENAI_API_KEY"),
+    getApiKey("PERPLEXITY_API_KEY"),
+  ]);
+  const embedModel = embedModelId();
 
   return {
     db: {
@@ -47,23 +68,23 @@ export function systemConfig(): SystemConfig {
       note: isDbConfigured() ? undefined : "Set DATABASE_URL in .env.local",
     },
     ai: {
-      provider: ACTIVE_PROVIDER,
-      draftModel: DRAFT_MODEL_ID,
-      tagModel: TAG_MODEL_ID,
-      embedModel: EMBED_MODEL_ID,
+      provider,
+      draftModel,
+      tagModel,
+      embedModel,
       chat: {
-        name: ACTIVE_PROVIDER === "openrouter" ? "OpenRouter" : "Google Gemini",
-        configured: isAiConfigured(),
-        detail: `${DRAFT_MODEL_ID} (draft) · ${TAG_MODEL_ID} (tag)`,
-        note: isAiConfigured() ? undefined : "Set GOOGLE_GENERATIVE_AI_API_KEY",
+        name: provider === "openrouter" ? "OpenRouter" : "Google Gemini",
+        configured: aiOk,
+        detail: `${draftModel} (draft) · ${tagModel} (tag)`,
+        note: aiOk ? undefined : "Set your Gemini key in Settings below",
       },
       embeddings: {
         name: "Google embeddings",
-        configured: isEmbeddingConfigured(),
-        detail: EMBED_MODEL_ID,
-        note: isEmbeddingConfigured()
+        configured: embedOk,
+        detail: embedModel,
+        note: embedOk
           ? undefined
-          : "Needs GOOGLE_GENERATIVE_AI_API_KEY (Google-only)",
+          : "Needs a Google Gemini key (Google-only)",
       },
     },
     serp: {
@@ -77,7 +98,7 @@ export function systemConfig(): SystemConfig {
       detail: serp === "duckduckgo" ? "Free fallback — rate-limits under load" : "Active key",
       note:
         serp === "duckduckgo"
-          ? "Set SERPER_API_KEY or BRAVE_SEARCH_API_KEY (free) for reliable Google results"
+          ? "Add a Serper or Brave key in Settings (free) for reliable Google results"
           : undefined,
     },
     keywords: {
@@ -95,18 +116,18 @@ export function systemConfig(): SystemConfig {
     aiVisibility: [
       {
         name: "Gemini (Google-grounded)",
-        configured: isEmbeddingConfigured(),
-        note: isEmbeddingConfigured() ? undefined : "Needs GOOGLE_GENERATIVE_AI_API_KEY",
+        configured: embedOk,
+        note: embedOk ? undefined : "Needs a Google Gemini key",
       },
       {
         name: "ChatGPT",
-        configured: Boolean(process.env.OPENAI_API_KEY),
-        note: process.env.OPENAI_API_KEY ? undefined : "Add OPENAI_API_KEY to enable",
+        configured: Boolean(openaiKey),
+        note: openaiKey ? undefined : "Add an OpenAI key in Settings to enable",
       },
       {
         name: "Perplexity",
-        configured: Boolean(process.env.PERPLEXITY_API_KEY),
-        note: process.env.PERPLEXITY_API_KEY ? undefined : "Add PERPLEXITY_API_KEY to enable",
+        configured: Boolean(perplexityKey),
+        note: perplexityKey ? undefined : "Add a Perplexity key in Settings to enable",
       },
     ],
     rank: [

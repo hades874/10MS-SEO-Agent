@@ -23,8 +23,10 @@ function goodRecord(): ScorableRecord {
     metaDescBn: desc,
     metaDescEn: desc,
     keywords: ["tt", "course"], // "tt" is a substring of the title corpus
-    ogTitle: "og title",
-    ogDescription: "og description",
+    ogTitleBn: "og title bn",
+    ogTitleEn: "og title en",
+    ogDescriptionBn: "og description bn",
+    ogDescriptionEn: "og description en",
     ogImage: "https://cdn.10minuteschool.com/x.jpg",
     imageAltThumb: "alt thumb",
     imageAltSqr: "alt sqr",

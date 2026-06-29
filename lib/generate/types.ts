@@ -23,8 +23,6 @@ export interface Exemplar {
   metaDescBn?: string | null;
   metaDescEn?: string | null;
   keywords?: string[] | null;
-  ogTitle?: string | null;
-  ogDescription?: string | null;
   slug?: string | null;
 }
 
@@ -41,8 +39,10 @@ export interface GeneratedCopy {
   metaDescBn: string;
   metaDescEn: string;
   keywords: string[];
-  ogTitle: string;
-  ogDescription: string;
+  ogTitleBn: string;
+  ogTitleEn: string;
+  ogDescriptionBn: string;
+  ogDescriptionEn: string;
   ogImageAlt: string;
   imageNameThumb: string;
   imageNameSqr: string;

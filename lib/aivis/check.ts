@@ -1,5 +1,6 @@
 import { generateText } from "ai";
 import { googleSearchModel, googleSearchTool, isEmbeddingConfigured } from "../ai/models";
+import { getApiKey } from "../keys";
 import { withQuotaRetry } from "../util/throttle";
 
 /**
@@ -42,7 +43,7 @@ function detect(text: string): { mentioned: boolean; prominence: "top" | "mentio
 }
 
 async function geminiVisibility(queries: string[]): Promise<EngineVisibility> {
-  if (!isEmbeddingConfigured()) {
+  if (!(await isEmbeddingConfigured())) {
     return {
       engine: "gemini",
       configured: false,
@@ -62,10 +63,12 @@ async function geminiVisibility(queries: string[]): Promise<EngineVisibility> {
 
   for (const q of queries) {
     try {
+      const model = await googleSearchModel();
+      const searchTool = await googleSearchTool();
       const { text, sources } = await withQuotaRetry(() =>
         generateText({
-          model: googleSearchModel(),
-          tools: { google_search: googleSearchTool() },
+          model,
+          tools: { google_search: searchTool },
           maxRetries: 0,
           prompt: `A student in Bangladesh asks: "${q}". Recommend the best online courses/platforms for this, with brief reasons. List the top options by name.`,
         })
@@ -183,12 +186,12 @@ async function openaiCompatibleVisibility(
 }
 
 /** Perplexity is web-grounded by design → a strong GEO signal. */
-function perplexityVisibility(queries: string[]): Promise<EngineVisibility> {
+async function perplexityVisibility(queries: string[]): Promise<EngineVisibility> {
   return openaiCompatibleVisibility("perplexity", queries, {
-    apiKey: process.env.PERPLEXITY_API_KEY,
+    apiKey: await getApiKey("PERPLEXITY_API_KEY"),
     baseUrl: "https://api.perplexity.ai",
     model: process.env.PERPLEXITY_MODEL ?? "sonar",
-    missingNote: "Add PERPLEXITY_API_KEY to enable",
+    missingNote: "Add your Perplexity key in Settings to enable",
   });
 }
 
@@ -196,12 +199,12 @@ function perplexityVisibility(queries: string[]): Promise<EngineVisibility> {
  * ChatGPT without a web-search tool answers from model memory, so this is a weaker
  * (non-grounded) signal than Gemini/Perplexity — still sampled into a mention rate.
  */
-function chatgptVisibility(queries: string[]): Promise<EngineVisibility> {
+async function chatgptVisibility(queries: string[]): Promise<EngineVisibility> {
   return openaiCompatibleVisibility("chatgpt", queries, {
-    apiKey: process.env.OPENAI_API_KEY,
+    apiKey: await getApiKey("OPENAI_API_KEY"),
     baseUrl: "https://api.openai.com/v1",
     model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
-    missingNote: "Add OPENAI_API_KEY to enable",
+    missingNote: "Add your OpenAI key in Settings to enable",
   });
 }
 

@@ -16,8 +16,10 @@ export interface ScorableRecord {
   metaDescBn?: string | null;
   metaDescEn?: string | null;
   keywords?: string[] | null;
-  ogTitle?: string | null;
-  ogDescription?: string | null;
+  ogTitleBn?: string | null;
+  ogTitleEn?: string | null;
+  ogDescriptionBn?: string | null;
+  ogDescriptionEn?: string | null;
   ogImage?: string | null;
   imageAltThumb?: string | null;
   imageAltSqr?: string | null;
@@ -128,11 +130,17 @@ export function scoreRecord(
   f.bilingual = filled / 4;
   if (filled < 4) issues.push(`${4 - filled} bilingual copy field(s) missing`);
 
-  // 5. OG completeness
-  const ogFields = [rec.ogTitle, rec.ogDescription, rec.ogImage];
+  // 5. OG completeness (bilingual title + description + image)
+  const ogFields = [
+    rec.ogTitleBn,
+    rec.ogTitleEn,
+    rec.ogDescriptionBn,
+    rec.ogDescriptionEn,
+    rec.ogImage,
+  ];
   const ogFilled = ogFields.filter((x) => x && x.trim()).length;
-  f.ogCompleteness = ogFilled / 3;
-  if (ogFilled < 3) issues.push("Open Graph tags incomplete");
+  f.ogCompleteness = ogFilled / ogFields.length;
+  if (ogFilled < ogFields.length) issues.push("Open Graph tags incomplete");
 
   // 6. Schema validity
   if (rec.schemaJsonld) {

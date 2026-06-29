@@ -35,9 +35,13 @@ First-time setup order matters: `db:init` (extension) → `db:push` (tables) →
 
 ## Environment
 
-Secrets live in `.env.local` (see `.env.example`). Two are required for full function:
-- `DATABASE_URL` — Neon Postgres connection string.
-- `GOOGLE_GENERATIVE_AI_API_KEY` — Gemini key (free tier covers both generation AND embeddings).
+**API keys are browser-supplied first.** Users set their AI + data-source keys on `/settings`; the keys API route (`app/api/keys/route.ts`) saves them as httpOnly cookies (`seo_key_<NAME>`), and `lib/keys.ts#getApiKey(name)` resolves each key **per request — cookie first, then `process.env` fallback**. So nothing ships with keys: env vars are now a local-dev/scripts convenience, not the primary source. The managed (browser-settable) keys are listed in `MANAGED_KEYS` (lib/keys.ts): Gemini, OpenRouter, OpenAI, Perplexity, Serper, Brave. `DATABASE_URL` is intentionally NOT managed — it stays env-only (server infrastructure, not a per-user browser secret).
+
+Because keys are per-request, the provider/selector accessors are **async** (see below). Standalone scripts have no request scope, so `getApiKey` transparently falls back to `.env.local`.
+
+Secrets live in `.env.local` (see `.env.example`) for local dev. Two matter most:
+- `DATABASE_URL` — Neon Postgres connection string (env-only).
+- `GOOGLE_GENERATIVE_AI_API_KEY` — Gemini key (free tier covers both generation AND embeddings); settable in the browser too.
 
 Optional: `OPENROUTER_API_KEY` + `AI_PROVIDER=openrouter` (chat only — embeddings still require a Google key). Model overrides: `SEO_DRAFT_MODEL`, `SEO_TAG_MODEL`, `SEO_EMBED_MODEL`. Other knobs: `EMBED_DIM` (default 768), `IMPORT_THROTTLE_MS` (default 6500), `SITE_ORIGIN`, `BRAND_NAME`.
 
@@ -88,13 +92,13 @@ Free-tier Gemini caps requests-per-minute and any model can briefly return "high
 - **Grapheme-aware length** (`visibleLength` in `lib/util/lang.ts`): SEO character limits are measured in user-perceived characters via `Intl.Segmenter`, NOT `string.length` — Bangla conjuncts/combining marks would otherwise overcount. Always use `visibleLength` for any character-limit logic; the limits live in `LIMITS` in `lib/score/validate.ts`.
 
 ### Graceful degradation when unconfigured
-The app boots without a DB or AI key. `lib/db/index.ts` is a lazy singleton that only throws when actually used; `isDbConfigured()` / `isAiConfigured()` / `isEmbeddingConfigured()` gate behavior, and `lib/status.ts` + `components/SetupBanner.tsx` surface what's missing in the UI. Server Actions return `{ ok: false, error }` rather than throwing. Preserve this pattern — don't introduce import-time crashes when env is absent. Note `isEmbeddingConfigured()` (Google key) is distinct from `isAiConfigured()` (either provider): OpenRouter can do chat but not embeddings.
+The app boots without a DB or AI key. `lib/db/index.ts` is a lazy singleton that only throws when actually used; `isDbConfigured()` / `isAiConfigured()` / `isEmbeddingConfigured()` gate behavior, and `lib/status.ts` + `components/SetupBanner.tsx` surface what's missing in the UI. Server Actions return `{ ok: false, error }` rather than throwing. Preserve this pattern — don't introduce import-time crashes when env is absent. Note `isEmbeddingConfigured()` (Google key) is distinct from `isAiConfigured()` (either provider): OpenRouter can do chat but not embeddings. **`isAiConfigured()` / `isEmbeddingConfigured()` are now `async`** (they resolve the per-request key) — `await` them.
 
 ### Provider layer
-`lib/ai/models.ts` is the single place that resolves the AI provider + model ids. Default is Google Gemini; OpenRouter is chat-only. Always go through `draftModel()` / `tagModel()` / `embedModel()` rather than instantiating providers directly. Embeddings are Google-only. `chatProviderOptions()` disables Gemini "thinking" on free-tier generation (reasoning tokens count against the TPM cap and our short fields don't need them); `googleSearchModel()` / `googleSearchTool()` add Search grounding for AI-visibility.
+`lib/ai/models.ts` is the single place that resolves the AI provider + model ids. Default is Google Gemini; OpenRouter is chat-only. Always go through `draftModel()` / `tagModel()` / `embedModel()` rather than instantiating providers directly. Embeddings are Google-only. **Because keys are resolved per request (browser cookie → env, via `lib/keys.ts`), every accessor here is `async`** — `await draftModel()`, `await chatProviderOptions()`, `await activeProvider()`, `await draftModelId()`, etc. (`embedModelId()` is the lone sync one — the embed model id is provider-independent). `chatProviderOptions()` disables Gemini "thinking" on free-tier generation (reasoning tokens count against the TPM cap and our short fields don't need them); `googleSearchModel()` / `googleSearchTool()` add Search grounding for AI-visibility.
 
 ### Pluggable data providers (free default → paid swap)
-Beyond AI, three external data sources follow the same shape: a `activeXProvider()` env-sniffing selector + a single dispatch function, so a paid key can replace the free default with no caller change.
+Beyond AI, three external data sources follow the same shape: an **`async activeXProvider()`** key-sniffing selector (cookie → env, via `getApiKey`) + a single dispatch function, so a paid key can replace the free default with no caller change. The selectors are async — `await activeSerpProvider()` / `await activeKeywordProvider()`.
 - SERP: `lib/serp/provider.ts` — `serper` | `brave` | `duckduckgo` (keyless default).
 - Keywords: `lib/keywords/provider.ts` — `dataforseo` (scaffold) | `autocomplete` (default).
 - Rank source: SERP (live default) vs Google Search Console (`lib/rank/gsc.ts`, scaffold gated by `isGscConfigured()`).

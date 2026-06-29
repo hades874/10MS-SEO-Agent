@@ -1,4 +1,5 @@
 import { researchKeyword, type KeywordResearch } from "./autocomplete";
+import { getApiKey } from "../keys";
 
 /**
  * Pluggable keyword-research provider — mirrors lib/serp/provider.ts. The free
@@ -9,8 +10,8 @@ import { researchKeyword, type KeywordResearch } from "./autocomplete";
 
 export type KeywordProvider = "autocomplete" | "dataforseo";
 
-export function activeKeywordProvider(): KeywordProvider {
-  if (process.env.DATAFORSEO_API_KEY) return "dataforseo";
+export async function activeKeywordProvider(): Promise<KeywordProvider> {
+  if (await getApiKey("DATAFORSEO_API_KEY")) return "dataforseo";
   return "autocomplete";
 }
 
@@ -39,7 +40,7 @@ export async function researchKeywordVia(
   seed: string,
   opts: ResearchOpts = {}
 ): Promise<KeywordResearch> {
-  switch (activeKeywordProvider()) {
+  switch (await activeKeywordProvider()) {
     case "dataforseo":
       return dataforseoResearch(seed, opts);
     default:

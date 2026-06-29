@@ -22,10 +22,10 @@ export async function backfillKeywords(course: {
   metaDescEn?: string | null;
 }): Promise<string[]> {
   const { object } = await generateObject({
-    model: tagModel(),
+    model: await tagModel(),
     schema: kwSchema,
     maxRetries: 0, // let the caller's quota-aware backoff handle rate limits
-    providerOptions: chatProviderOptions(),
+    providerOptions: await chatProviderOptions(),
     prompt: `Generate 3–5 concise SEO keywords for this 10 Minute School course page. Mix Bangla and English/Banglish terms as students actually search. Use ONLY the given facts; do not invent. Each keyword ≤ 50 characters.
 
 Course name: ${course.name}

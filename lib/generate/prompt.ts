@@ -76,7 +76,7 @@ ${brandBlock}
 MOST SIMILAR PAST COURSES (match this style — but do NOT copy their specifics):
 ${exemplarBlock || "(none retrieved)"}
 
-Produce: meta title (bn+en), meta description (bn+en), 3–6 keywords, og title, og description, og image alt, image names (thumbnail + square), image alt texts (thumbnail + square). Respect every character limit.`;
+Produce: meta title (bn+en), meta description (bn+en), 3–6 keywords, og title (bn+en), og description (bn+en), og image alt, image names (thumbnail + square), image alt texts (thumbnail + square). Respect every character limit.`;
 }
 
 /**

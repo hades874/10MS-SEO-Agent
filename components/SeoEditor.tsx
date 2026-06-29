@@ -80,8 +80,10 @@ export function SeoEditor({
       <FieldEditor label="Meta description (Bangla)" value={copy.metaDescBn} onChange={(v) => setField("metaDescBn", v)} min={LIMITS.descMin} max={LIMITS.descMax} multiline />
       <FieldEditor label="Meta description (English)" value={copy.metaDescEn} onChange={(v) => setField("metaDescEn", v)} min={LIMITS.descMin} max={LIMITS.descMax} multiline />
       <FieldEditor label="Keywords (comma-separated)" value={copy.keywords.join(", ")} onChange={(v) => setField("keywords", v.split(",").map((s) => s.trim()).filter(Boolean))} hint="Each ≤ 50 chars" />
-      <FieldEditor label="og:title" value={copy.ogTitle} onChange={(v) => setField("ogTitle", v)} />
-      <FieldEditor label="og:description" value={copy.ogDescription} onChange={(v) => setField("ogDescription", v)} multiline />
+      <FieldEditor label="og:title (Bangla)" value={copy.ogTitleBn} onChange={(v) => setField("ogTitleBn", v)} />
+      <FieldEditor label="og:title (English)" value={copy.ogTitleEn} onChange={(v) => setField("ogTitleEn", v)} />
+      <FieldEditor label="og:description (Bangla)" value={copy.ogDescriptionBn} onChange={(v) => setField("ogDescriptionBn", v)} multiline />
+      <FieldEditor label="og:description (English)" value={copy.ogDescriptionEn} onChange={(v) => setField("ogDescriptionEn", v)} multiline />
       <FieldEditor label="og:image alt" value={copy.ogImageAlt} onChange={(v) => setField("ogImageAlt", v)} />
       <FieldEditor label="Image name (thumbnail)" value={copy.imageNameThumb} onChange={(v) => setField("imageNameThumb", v)} />
       <FieldEditor label="Image name (square)" value={copy.imageNameSqr} onChange={(v) => setField("imageNameSqr", v)} />

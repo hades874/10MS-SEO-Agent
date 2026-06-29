@@ -4,7 +4,11 @@
       "PowerShell(npm approve-scripts --allow-scripts-pending 2>&1)",
       "PowerShell(npm approve-scripts esbuild 2>&1)",
       "PowerShell(npm approve-scripts sharp 2>&1)",
-      "PowerShell(npm install csv-parse 2>&1)"
+      "PowerShell(npm install csv-parse 2>&1)",
+      "PowerShell(npx tsc --noEmit 2>&1)",
+      "PowerShell(npm test 2>&1)",
+      "PowerShell($env:DATABASE_URL=\"\"; $env:GOOGLE_GENERATIVE_AI_API_KEY=\"\"; npm run dev)",
+      "PowerShell(npx tsx _cols_check.ts 2>&1)"
     ]
   }
 }

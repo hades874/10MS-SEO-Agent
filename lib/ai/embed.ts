@@ -1,5 +1,5 @@
 import { embed, embedMany } from "ai";
-import { embedModel, EMBED_MODEL_ID } from "./models";
+import { embedModel, embedModelId } from "./models";
 import { EMBED_DIM } from "../db/schema";
 
 /**
@@ -8,7 +8,7 @@ import { EMBED_DIM } from "../db/schema";
  * is fixed at 768 and ignores the option.
  */
 function providerOptions() {
-  if (EMBED_MODEL_ID.includes("gemini-embedding")) {
+  if (embedModelId().includes("gemini-embedding")) {
     return { google: { outputDimensionality: EMBED_DIM } };
   }
   return undefined;
@@ -16,7 +16,7 @@ function providerOptions() {
 
 export async function embedText(text: string): Promise<number[]> {
   const { embedding } = await embed({
-    model: embedModel(),
+    model: await embedModel(),
     value: text,
     providerOptions: providerOptions(),
   });
@@ -26,7 +26,7 @@ export async function embedText(text: string): Promise<number[]> {
 export async function embedTexts(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
   const { embeddings } = await embedMany({
-    model: embedModel(),
+    model: await embedModel(),
     values: texts,
     providerOptions: providerOptions(),
   });

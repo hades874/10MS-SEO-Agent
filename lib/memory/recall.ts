@@ -77,8 +77,6 @@ export async function recallExemplars(
       metaDescBn: seoRecords.metaDescBn,
       metaDescEn: seoRecords.metaDescEn,
       keywords: seoRecords.keywords,
-      ogTitle: seoRecords.ogTitle,
-      ogDescription: seoRecords.ogDescription,
       slug: courses.slug,
       version: seoRecords.version,
     })
@@ -98,8 +96,6 @@ export async function recallExemplars(
         metaDescBn: r.metaDescBn,
         metaDescEn: r.metaDescEn,
         keywords: r.keywords ?? undefined,
-        ogTitle: r.ogTitle,
-        ogDescription: r.ogDescription,
         slug: r.slug,
       });
     }

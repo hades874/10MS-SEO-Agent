@@ -11,6 +11,7 @@ const nav = [
   { href: "/", label: "Dashboard" },
   { href: "/courses/new", label: "New course" },
   { href: "/keywords", label: "Keywords" },
+  { href: "/compare", label: "Compare" },
   { href: "/import", label: "Import" },
   { href: "/settings", label: "Settings" },
 ];
