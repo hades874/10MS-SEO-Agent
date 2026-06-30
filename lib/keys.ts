@@ -31,11 +31,6 @@ export const MANAGED_KEYS = [
     help: "Optional — adds ChatGPT as an AI-visibility engine.",
   },
   {
-    name: "PERPLEXITY_API_KEY",
-    label: "Perplexity",
-    help: "Optional — adds Perplexity as an AI-visibility engine.",
-  },
-  {
     name: "SERPER_API_KEY",
     label: "Serper (Google SERP)",
     help: "Recommended — reliable Google results for competitor + rank checks.",

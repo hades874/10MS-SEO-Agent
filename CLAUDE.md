@@ -37,7 +37,7 @@ First-time setup order matters: `db:init` (extension) → `db:push` (tables) →
 
 ## Environment
 
-**API keys are browser-supplied first.** Users set their AI + data-source keys on `/settings`; the keys API route (`app/api/keys/route.ts`) saves them as httpOnly cookies (`seo_key_<NAME>`), and `lib/keys.ts#getApiKey(name)` resolves each key **per request — cookie first, then `process.env` fallback**. So nothing ships with keys: env vars are now a local-dev/scripts convenience, not the primary source. The managed (browser-settable) keys are listed in `MANAGED_KEYS` (lib/keys.ts): Gemini, OpenRouter, OpenAI, Perplexity, Serper, Brave. `DATABASE_URL` is intentionally NOT managed — it stays env-only (server infrastructure, not a per-user browser secret).
+**API keys are browser-supplied first.** Users set their AI + data-source keys on `/settings`; the keys API route (`app/api/keys/route.ts`) saves them as httpOnly cookies (`seo_key_<NAME>`), and `lib/keys.ts#getApiKey(name)` resolves each key **per request — cookie first, then `process.env` fallback**. So nothing ships with keys: env vars are now a local-dev/scripts convenience, not the primary source. The managed (browser-settable) keys are listed in `MANAGED_KEYS` (lib/keys.ts): Gemini, OpenRouter, OpenAI, Serper, Brave. `DATABASE_URL` is intentionally NOT managed — it stays env-only (server infrastructure, not a per-user browser secret).
 
 Because keys are per-request, the provider/selector accessors are **async** (see below). Standalone scripts have no request scope, so `getApiKey` transparently falls back to `.env.local`.
 
@@ -50,7 +50,7 @@ Optional: `OPENROUTER_API_KEY` + `AI_PROVIDER=openrouter` (chat only — embeddi
 Everything below is **optional and pluggable** — each unlocks a better data source for Phases 2–4 without any code change, and the app falls back to a free keyless default when absent (see the pluggable-provider convention). All have free tiers unless noted:
 - `SERPER_API_KEY` (recommended) or `BRAVE_SEARCH_API_KEY` — real Google/Brave SERP for competitor discovery + rank checks. Default is keyless DuckDuckGo scraping, which rate-limits/blocks under load.
 - `DATAFORSEO_API_KEY` — real keyword search volume (paid; adapter scaffolded, not yet implemented). Default is free Google Autocomplete (demand = suggestion breadth, directional only).
-- `OPENAI_API_KEY` (+ `OPENAI_MODEL`), `PERPLEXITY_API_KEY` (+ `PERPLEXITY_MODEL`) — extra AI-visibility engines. Gemini (the Google key) is the default engine; these slots stay "not configured" until added.
+- `OPENAI_API_KEY` (+ `OPENAI_MODEL`) — adds ChatGPT as an extra AI-visibility engine. Gemini (the Google key) is the default engine; this slot stays "not configured" until added.
 - `GSC_SITE_URL` + (`GSC_SERVICE_ACCOUNT_JSON` | `GSC_REFRESH_TOKEN`) — Google Search Console for exact impressions/clicks/CTR (scaffolded, not yet implemented). Default rank path is SERP-based.
 - `CRON_SECRET` — bearer token guarding the `/api/cron/recheck` endpoint in production.
 
@@ -81,7 +81,7 @@ All persistence routes through one private helper, `writeSeoVersion`, shared by 
 Each is a Server Action in `actions.ts` wrapping a module; each persists best-effort (a DB failure never fails the user-facing call) and degrades to a free keyless source when unconfigured:
 - **Competitor analysis** (`lib/competitors/*`, `analyzeCompetitorsAction`): discover BD-watchlist URLs that rank for a keyword (`search.ts` over the SERP provider, against the curated domain list in `config.ts`) → `fetch.ts` → `parse.ts` (cheerio) → `score.ts`, sorted strongest-first, cached to `competitor_snapshots`. If the keyless DuckDuckGo path returns zero results it throws an actionable "set SERPER_API_KEY" error rather than a misleading "no competitors".
 - **Keyword research** (`lib/keywords/*`, `keywordResearchAction`): free Google Autocomplete expansion (`autocomplete.ts`); demand is a directional *suggestion-breadth* proxy, **not** real volume. Cached to `keyword_research`.
-- **Rank + AI-visibility tracking** (`lib/track.ts`, `trackCourseAction` and the cron): `trackCourse` runs web rank (`lib/rank/serp.ts`, finds the 10MS position in SERP results for up to 3 keywords) and AI-search/GEO visibility (`lib/aivis/check.ts`) together, persisting both. AI visibility queries Gemini **with Google Search grounding** (so it answers like a real answer engine), samples multiple queries, and reports a brand **mention rate**, not a single rank; ChatGPT/Perplexity engines speak the OpenAI `/chat/completions` shape and activate when their keys are present.
+- **Rank + AI-visibility tracking** (`lib/track.ts`, `trackCourseAction` and the cron): `trackCourse` runs web rank (`lib/rank/serp.ts`, finds the 10MS position in SERP results for up to 3 keywords) and AI-search/GEO visibility (`lib/aivis/check.ts`) together, persisting both. AI visibility queries Gemini **with Google Search grounding** (so it answers like a real answer engine), samples multiple queries, and reports a brand **mention rate**, not a single rank; the ChatGPT engine speaks the OpenAI `/chat/completions` shape and activates when its key is present.
 
 ### Resilience: quota/overload retry
 Free-tier Gemini caps requests-per-minute and any model can briefly return "high demand"/overloaded. Wrap provider calls that can spike in `withQuotaRetry` (`lib/util/throttle.ts`): it classifies 429 (honors the "retry in Ns" hint) vs overload (exponential backoff) and retries transient failures only. `generateForNewCourse` also maps a surfaced overload error to a friendly "model is busy, try again" message.
@@ -110,8 +110,15 @@ Beyond AI, three external data sources follow the same shape: an **`async active
 ### Standalone scripts
 Scripts in `scripts/` run under `tsx` and don't get Next's auto env loading, so they (and `drizzle.config.ts`) import `lib/loadEnv.ts` first to load `.env.local`. Any new script that touches env must do the same.
 
+### PDP comparison (Phase 5, `lib/pdp/`)
+Head-to-head Product Detail Page analysis: fetch + parse our page and up to 5 competitor pages, derive a deterministic keyword gap, and (if AI is configured) run a single combined content-gap analysis. Orchestrated by `lib/pdp/compare.ts` (`comparePdps`), exposed as `comparePdpsAction` in `lib/actions.ts`, and rendered at `/compare`.
+
+Pipeline: `compare.ts` fans out `fetchHtml` calls in parallel → `parse.ts` (`parsePdp`) extends the competitor `parsePage` extractor with h1–h3 headings and a 1 500-char body excerpt → `keywordGap.ts` (`computeKeywordGap`) derives a page-level keyword gap deterministically (title + heading n-grams the competitors emphasise that our page doesn't mention; optionally enriched with Autocomplete expansion) → `analyze.ts` (`analyzePdpGap`) calls `generateObject` with `PdpGapSchema` for structured deficits/content-gaps/prioritized-actions. AI failure degrades to `analysis: null` (the on-page comparison always works keyless). `lib/pdp/prompt.ts` holds the system prompt and `buildPdpUserPrompt`; excerpt budget is shrunk per-competitor as the field grows to keep the prompt cheap.
+
+`components/ErrorNote.tsx` — shared inline error/warning component (used across all panels, not just PDP); accepts `tone="error"|"warning"`.
+
 ### Routes / UI
-App Router pages: `/` (dashboard), `/courses/new` (generate + edit), `/courses/[id]` (detail — embeds competitor/tracking/version-history/export panels), `/import` (CSV upload), `/keywords` (keyword research + competitor analysis), `/settings` (read-only provider status from `systemConfig()`). `app/api/cron/recheck/route.ts` runs the live 3-week rank + AI-visibility re-check, wired to a **daily** Vercel cron in `vercel.ts` — the handler only re-checks LIVE courses whose last check is >21 days old, so the 3-week cadence lives in code, not the cron string. Guarded by `CRON_SECRET` when set.
+App Router pages: `/` (dashboard), `/courses/new` (generate + edit), `/courses/[id]` (detail — embeds competitor/tracking/version-history/export panels), `/import` (CSV upload), `/keywords` (keyword research + competitor analysis), `/compare` (PDP head-to-head comparison), `/settings` (read-only provider status from `systemConfig()`). `app/api/cron/recheck/route.ts` runs the live 3-week rank + AI-visibility re-check, wired to a **daily** Vercel cron in `vercel.ts` — the handler only re-checks LIVE courses whose last check is >21 days old, so the 3-week cadence lives in code, not the cron string. Guarded by `CRON_SECRET` when set.
 
 ## Phase status
 - ✅ Phase 0 — scaffold, schema, config.
@@ -119,5 +126,6 @@ App Router pages: `/` (dashboard), `/courses/new` (generate + edit), `/courses/[
 - ✅ Phase 2 — competitor analysis + keyword research (free keyless sources by default).
 - ✅ Phase 3 — SERP rank checks + AI-search/GEO visibility + daily-fires/3-week-cadence cron.
 - ✅ Phase 4 — versioned records + history/diff + exports; pluggable paid data sources **scaffolded** (DataForSEO keyword volume, Google Search Console rank) — selectors and env gates exist but the adapters fall through to the free path (`TODO(phase4-...)`).
+- ✅ Phase 5 — PDP head-to-head comparison (`lib/pdp/`, `/compare`) — fetch + parse + deterministic keyword gap + AI content-gap analysis; degrades gracefully when AI is unconfigured.
 
 The free/keyless defaults are the intended baseline; paid keys are pure upgrades. When implementing a scaffolded adapter, keep the free fallthrough so the app never hard-requires a paid key.

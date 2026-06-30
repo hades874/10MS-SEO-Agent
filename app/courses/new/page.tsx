@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { generateForNewCourse, saveCourse } from "@/lib/actions";
 import { FieldEditor } from "@/components/FieldEditor";
 import { ScoreBadge } from "@/components/ScoreBadge";
+import { ErrorNote } from "@/components/ErrorNote";
 import type { CourseInput, GeneratedCopy } from "@/lib/generate/types";
 
 const LIMITS = { titleMin: 30, titleMax: 60, descMin: 70, descMax: 160 };
@@ -157,11 +158,7 @@ export default function NewCoursePage() {
           >
             {busy ? "Generating…" : "Generate SEO bundle"}
           </button>
-          {error && (
-            <p className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-              {error}
-            </p>
-          )}
+          {error && <ErrorNote>{error}</ErrorNote>}
         </div>
       </div>
 

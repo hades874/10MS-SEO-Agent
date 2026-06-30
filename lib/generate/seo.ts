@@ -17,6 +17,9 @@ import type {
   GeneratedCopy,
 } from "./types";
 
+// Image *names* are mechanical slugs, not creative copy, so we build them
+// deterministically from the course slug (like the JSON-LD) instead of trusting
+// the LLM — that guarantees the house pattern (square always carries "-sqr-").
 const copySchema = z.object({
   metaTitleBn: z.string().describe("Bangla meta title, 30–60 visible chars, majority Bangla"),
   metaTitleEn: z.string().describe("English meta title, 30–60 visible chars, majority Latin"),
@@ -26,14 +29,31 @@ const copySchema = z.object({
   ogTitleBn: z.string().describe("Bangla Open Graph title, majority Bangla"),
   ogDescriptionBn: z.string().describe("Bangla Open Graph description, majority Bangla"),
   ogImageAlt: z.string(),
-  imageNameThumb: z.string().describe("lowercase hyphenated, ends with -thumbnail"),
-  imageNameSqr: z.string().describe("lowercase hyphenated, ends with -sqr"),
-  imageAltThumb: z.string(),
-  imageAltSqr: z.string(),
+  imageAltThumb: z.string().describe('thumbnail alt text, ends with "- thumbnail"'),
+  imageAltSqr: z.string().describe('square alt text, ends with "- sqr thumbnail"'),
 });
 
+/**
+ * House image-name convention (mined from the seed data):
+ *   thumbnail → `<slug>-thumbnail`
+ *   square    → `<slug>-sqr-thumbnail`
+ * Built from the slug, never AI-guessed, so the square name always carries "sqr".
+ */
+function imageNames(slug: string | null | undefined): {
+  imageNameThumb: string;
+  imageNameSqr: string;
+} {
+  const base = (slug ?? "").trim().replace(/-+$/, "") || "course";
+  return {
+    imageNameThumb: `${base}-thumbnail`,
+    imageNameSqr: `${base}-sqr-thumbnail`,
+  };
+}
+
+type LenField = "metaTitleBn" | "metaTitleEn" | "metaDescBn" | "metaDescEn";
+
 interface LenRule {
-  field: keyof GeneratedCopy;
+  field: LenField;
   min: number;
   max: number;
 }
@@ -45,7 +65,7 @@ const LEN_RULES: LenRule[] = [
   { field: "metaDescEn", min: LIMITS.descMin, max: LIMITS.descMax },
 ];
 
-function findViolations(copy: GeneratedCopy) {
+function findViolations(copy: Record<LenField, string>) {
   return LEN_RULES.flatMap((r) => {
     const value = copy[r.field] as string;
     const current = visibleLength(value);
@@ -82,14 +102,20 @@ export async function generateSeo(
   const model = await draftModel();
   const providerOptions = await chatProviderOptions();
 
-  let { object: copy } = await withQuotaRetry(() =>
-    generateObject({
-      model,
-      schema: copySchema,
-      system: SYSTEM_PROMPT,
-      prompt: userPrompt,
-      providerOptions,
-    })
+  // Interactive flow: cap the retry wait so a hard quota limit surfaces a clear error
+  // in a few seconds instead of leaving the user staring at a spinner for ~70s.
+  const retryOpts = { retries: 1, maxWaitMs: 10000 } as const;
+
+  let { object: copy } = await withQuotaRetry(
+    () =>
+      generateObject({
+        model,
+        schema: copySchema,
+        system: SYSTEM_PROMPT,
+        prompt: userPrompt,
+        providerOptions,
+      }),
+    retryOpts
   );
 
   let attempts = 0;
@@ -97,18 +123,23 @@ export async function generateSeo(
   while (violations.length > 0 && attempts < maxRepairs) {
     attempts++;
     // Repair is self-contained (no exemplar/style block) to keep tokens low.
-    const res = await withQuotaRetry(() =>
-      generateObject({
-        model,
-        schema: copySchema,
-        system: SYSTEM_PROMPT,
-        prompt: buildRepairPrompt(copy, violations),
-        providerOptions,
-      })
+    const res = await withQuotaRetry(
+      () =>
+        generateObject({
+          model,
+          schema: copySchema,
+          system: SYSTEM_PROMPT,
+          prompt: buildRepairPrompt(copy, violations),
+          providerOptions,
+        }),
+      retryOpts
     );
     copy = res.object;
     violations = findViolations(copy);
   }
+
+  // Image names are derived from the slug, not the LLM (see imageNames()).
+  const fullCopy: GeneratedCopy = { ...copy, ...imageNames(input.slug) };
 
   const { schema, missing } = buildProductSchema({
     name: input.name,
@@ -123,20 +154,20 @@ export async function generateSeo(
 
   const score = scoreRecord(
     {
-      metaTitleBn: copy.metaTitleBn,
-      metaTitleEn: copy.metaTitleEn,
-      metaDescBn: copy.metaDescBn,
-      metaDescEn: copy.metaDescEn,
-      keywords: copy.keywords,
-      ogTitleBn: copy.ogTitleBn,
+      metaTitleBn: fullCopy.metaTitleBn,
+      metaTitleEn: fullCopy.metaTitleEn,
+      metaDescBn: fullCopy.metaDescBn,
+      metaDescEn: fullCopy.metaDescEn,
+      keywords: fullCopy.keywords,
+      ogTitleBn: fullCopy.ogTitleBn,
       ogTitleEn: null,
-      ogDescriptionBn: copy.ogDescriptionBn,
+      ogDescriptionBn: fullCopy.ogDescriptionBn,
       ogDescriptionEn: null,
       ogImage: input.imageUrl,
-      imageAltThumb: copy.imageAltThumb,
-      imageAltSqr: copy.imageAltSqr,
-      imageNameThumb: copy.imageNameThumb,
-      imageNameSqr: copy.imageNameSqr,
+      imageAltThumb: fullCopy.imageAltThumb,
+      imageAltSqr: fullCopy.imageAltSqr,
+      imageNameThumb: fullCopy.imageNameThumb,
+      imageNameSqr: fullCopy.imageNameSqr,
       schemaJsonld: schema as unknown as Record<string, unknown>,
       slug: input.slug,
     },
@@ -144,7 +175,7 @@ export async function generateSeo(
   );
 
   return {
-    copy,
+    copy: fullCopy,
     schema,
     schemaMissing: missing,
     score,

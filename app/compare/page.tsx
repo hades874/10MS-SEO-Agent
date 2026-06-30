@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { comparePdpsAction } from "@/lib/actions";
 import { PdpComparePanel } from "@/components/PdpComparePanel";
+import { ErrorNote } from "@/components/ErrorNote";
 import { MAX_COMPETITORS } from "@/lib/pdp/compare";
 import type { PdpComparisonResult } from "@/lib/pdp/types";
 
@@ -115,7 +116,7 @@ export default function ComparePage() {
         >
           {busy ? "Comparing…" : "Compare"}
         </button>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <ErrorNote>{error}</ErrorNote>}
       </div>
 
       {comparison && <PdpComparePanel comparison={comparison} />}

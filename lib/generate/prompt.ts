@@ -14,7 +14,7 @@ Core rules — follow precisely:
    - each keyword: ≤ ${LIMITS.keywordMax} chars
 4. GROUNDING: Use ONLY facts provided about the course. Do NOT invent features, subjects, prices, or claims. If a detail isn't given, omit it — never fabricate.
 5. Reuse the house phrases/USPs provided when they genuinely fit the course; keep the brand's energetic, exam-prep tone and call-to-action style (e.g. "এনরোল করো এই কোর্সে").
-6. image names must be lowercase, hyphen-separated slugs ending in -thumbnail / -sqr. alt texts follow the house pattern "<EN/BN name> - thumbnail".
+6. alt texts follow the house pattern "<EN/BN name> - thumbnail" for the thumbnail and "<EN/BN name> - sqr thumbnail" for the square. (Image file names are generated for you — do not produce them.)
 
 Return only the structured fields requested.`;
 
@@ -76,7 +76,7 @@ ${brandBlock}
 MOST SIMILAR PAST COURSES (match this style — but do NOT copy their specifics):
 ${exemplarBlock || "(none retrieved)"}
 
-Produce: meta title (bn+en), meta description (bn+en), 3–6 keywords, og title (bn), og description (bn), og image alt, image names (thumbnail + square with '-sqr' tag), image alt texts (thumbnail + square). Respect every character limit.`;
+Produce: meta title (bn+en), meta description (bn+en), 3–6 keywords, og title (bn), og description (bn), og image alt, image alt texts (thumbnail + square). Respect every character limit.`;
 }
 
 /**

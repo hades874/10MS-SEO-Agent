@@ -11,7 +11,6 @@
  
 <!-- make these following changes in the project - 
 
-the og title and description should support both bangla and english language. make this update in the project
 
 gemini and all other api keys should be set here manually by a user when he or she first uses the project in their browser. it will be saved in the user end, not given by default in the system itself.  -->
 

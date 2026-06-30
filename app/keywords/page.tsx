@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { keywordResearchAction } from "@/lib/actions";
+import { ErrorNote } from "@/components/ErrorNote";
 import type { KeywordResearch } from "@/lib/keywords/autocomplete";
 
 export default function KeywordsPage() {
@@ -52,9 +53,7 @@ export default function KeywordsPage() {
         <p className="mt-1 text-xs text-gray-400">a–z expansion makes ~70 requests; takes a few seconds.</p>
       )}
 
-      {error && (
-        <p className="mt-4 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</p>
-      )}
+      {error && <ErrorNote className="mt-4">{error}</ErrorNote>}
 
       {research && (
         <div className="mt-6">

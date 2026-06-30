@@ -1,7 +1,11 @@
 import { generateText } from "ai";
 import { googleSearchModel, googleSearchTool, isEmbeddingConfigured } from "../ai/models";
 import { getApiKey } from "../keys";
-import { withQuotaRetry } from "../util/throttle";
+import { withQuotaRetry, classifyError } from "../util/throttle";
+
+// Interactive tracking should fail fast on a rate limit rather than retrying for ~70s
+// and appearing to hang — one short retry, then bail and report it.
+const INTERACTIVE_RETRY = { retries: 1, maxWaitMs: 8000 } as const;
 
 /**
  * AI-search visibility (GEO): does an AI assistant recommend 10 Minute School when a
@@ -9,8 +13,8 @@ import { withQuotaRetry } from "../util/throttle";
  * it behaves like a real answer engine), then detect our brand's mention + prominence.
  * Non-deterministic, so we sample and report a mention RATE, not a single rank.
  *
- * Other engines (ChatGPT, Perplexity) need their own API keys — slots exist but stay
- * "not configured" until those are added.
+ * ChatGPT is an optional second engine — its slot stays "not configured" until an
+ * OpenAI key is added.
  */
 
 const BRAND_TERMS = [
@@ -20,7 +24,7 @@ const BRAND_TERMS = [
   "টেন মিনিট স্কুল",
 ];
 
-export type Engine = "gemini" | "ai_overview" | "chatgpt" | "perplexity";
+export type Engine = "gemini" | "ai_overview" | "chatgpt";
 
 export interface EngineVisibility {
   engine: Engine;
@@ -31,6 +35,7 @@ export interface EngineVisibility {
   samples: number;
   citationUrl: string | null;
   note?: string;
+  rateLimited?: boolean; // true if sampling was cut short by a quota/overload error
 }
 
 function detect(text: string): { mentioned: boolean; prominence: "top" | "mention" | "none" } {
@@ -60,18 +65,21 @@ async function geminiVisibility(queries: string[]): Promise<EngineVisibility> {
   let bestProminence: "top" | "mention" | "none" = "none";
   let citationUrl: string | null = null;
   let samples = 0;
+  let rateLimited = false;
 
   for (const q of queries) {
     try {
       const model = await googleSearchModel();
       const searchTool = await googleSearchTool();
-      const { text, sources } = await withQuotaRetry(() =>
-        generateText({
-          model,
-          tools: { google_search: searchTool },
-          maxRetries: 0,
-          prompt: `A student in Bangladesh asks: "${q}". Recommend the best online courses/platforms for this, with brief reasons. List the top options by name.`,
-        })
+      const { text, sources } = await withQuotaRetry(
+        () =>
+          generateText({
+            model,
+            tools: { google_search: searchTool },
+            maxRetries: 0,
+            prompt: `A student in Bangladesh asks: "${q}". Recommend the best online courses/platforms for this, with brief reasons. List the top options by name.`,
+          }),
+        INTERACTIVE_RETRY
       );
       samples++;
       const d = detect(text);
@@ -86,8 +94,13 @@ async function geminiVisibility(queries: string[]): Promise<EngineVisibility> {
         if (src && "url" in src && typeof src.url === "string") citationUrl = src.url;
       }
     } catch (e) {
-      // Skip this sample; it's excluded from the mention-rate denominator below.
       console.error("checkAiVisibility (gemini): sample failed:", e);
+      // A quota/overload error will repeat for the remaining queries — stop sampling
+      // and report it rather than waiting through each one.
+      if (classifyError(e)) {
+        rateLimited = true;
+        break;
+      }
     }
   }
 
@@ -99,13 +112,15 @@ async function geminiVisibility(queries: string[]): Promise<EngineVisibility> {
     mentionRate: samples ? mentions / samples : 0,
     samples,
     citationUrl,
+    rateLimited,
+    note: rateLimited && samples === 0 ? "Rate limited — try again shortly" : undefined,
   };
 }
 
 /**
- * Sample an OpenAI-compatible chat endpoint (OpenAI, Perplexity) over the queries and
- * compute a brand mention rate — same shape as geminiVisibility. Used for ChatGPT and
- * Perplexity, which both speak the /chat/completions protocol.
+ * Sample an OpenAI-compatible chat endpoint over the queries and compute a brand
+ * mention rate — same shape as geminiVisibility. Used for ChatGPT (the /chat/completions
+ * protocol).
  */
 async function openaiCompatibleVisibility(
   engine: Engine,
@@ -127,8 +142,9 @@ async function openaiCompatibleVisibility(
 
   let mentions = 0;
   let bestProminence: "top" | "mention" | "none" = "none";
-  let citationUrl: string | null = null;
+  const citationUrl: string | null = null;
   let samples = 0;
+  let rateLimited = false;
 
   for (const q of queries) {
     try {
@@ -153,14 +169,9 @@ async function openaiCompatibleVisibility(
         if (!res.ok) throw new Error(`${engine} ${res.status}: ${await res.text()}`);
         const data = (await res.json()) as {
           choices?: { message?: { content?: string } }[];
-          citations?: string[];
         };
-        const content = data.choices?.[0]?.message?.content ?? "";
-        // Perplexity returns web citations; capture a 10MS one if present.
-        const cite = (data.citations ?? []).find((u) => u.includes("10minuteschool"));
-        if (cite) citationUrl = cite;
-        return content;
-      });
+        return data.choices?.[0]?.message?.content ?? "";
+      }, INTERACTIVE_RETRY);
       samples++;
       const d = detect(text);
       if (d.mentioned) {
@@ -169,8 +180,13 @@ async function openaiCompatibleVisibility(
         else if (bestProminence === "none") bestProminence = "mention";
       }
     } catch (e) {
-      // Skip this sample; it's excluded from the mention-rate denominator below.
       console.error(`checkAiVisibility (${engine}): sample failed:`, e);
+      // A quota/overload error will repeat for the remaining queries — stop sampling
+      // and report it rather than waiting through each one.
+      if (classifyError(e)) {
+        rateLimited = true;
+        break;
+      }
     }
   }
 
@@ -182,22 +198,14 @@ async function openaiCompatibleVisibility(
     mentionRate: samples ? mentions / samples : 0,
     samples,
     citationUrl,
+    rateLimited,
+    note: rateLimited && samples === 0 ? "Rate limited — try again shortly" : undefined,
   };
-}
-
-/** Perplexity is web-grounded by design → a strong GEO signal. */
-async function perplexityVisibility(queries: string[]): Promise<EngineVisibility> {
-  return openaiCompatibleVisibility("perplexity", queries, {
-    apiKey: await getApiKey("PERPLEXITY_API_KEY"),
-    baseUrl: "https://api.perplexity.ai",
-    model: process.env.PERPLEXITY_MODEL ?? "sonar",
-    missingNote: "Add your Perplexity key in Settings to enable",
-  });
 }
 
 /**
  * ChatGPT without a web-search tool answers from model memory, so this is a weaker
- * (non-grounded) signal than Gemini/Perplexity — still sampled into a mention rate.
+ * (non-grounded) signal than Gemini — still sampled into a mention rate.
  */
 async function chatgptVisibility(queries: string[]): Promise<EngineVisibility> {
   return openaiCompatibleVisibility("chatgpt", queries, {
@@ -211,6 +219,7 @@ async function chatgptVisibility(queries: string[]): Promise<EngineVisibility> {
 export interface AiVisibilityResult {
   queries: string[];
   engines: EngineVisibility[];
+  rateLimited: boolean; // any configured engine was cut short by a quota/overload error
 }
 
 /** Build natural student queries from course facts, then check each engine. */
@@ -236,15 +245,16 @@ export async function checkAiVisibility(facts: {
   subject?: string | null;
 }): Promise<AiVisibilityResult> {
   const queries = buildVisibilityQueries(facts);
-  // Engines auto-activate when their key is present; otherwise return a "not
+  // ChatGPT auto-activates when an OpenAI key is present; otherwise it returns a "not
   // configured" slot (free Gemini-only default is unchanged).
-  const [gemini, chatgpt, perplexity] = await Promise.all([
+  const [gemini, chatgpt] = await Promise.all([
     geminiVisibility(queries),
     chatgptVisibility(queries),
-    perplexityVisibility(queries),
   ]);
+  const engines = [gemini, chatgpt];
   return {
     queries,
-    engines: [gemini, chatgpt, perplexity],
+    engines,
+    rateLimited: engines.some((e) => e.rateLimited),
   };
 }

@@ -47,7 +47,6 @@ export async function systemConfig(): Promise<SystemConfig> {
     aiOk,
     embedOk,
     openaiKey,
-    perplexityKey,
   ] = await Promise.all([
     activeSerpProvider(),
     activeKeywordProvider(),
@@ -57,7 +56,6 @@ export async function systemConfig(): Promise<SystemConfig> {
     isAiConfigured(),
     isEmbeddingConfigured(),
     getApiKey("OPENAI_API_KEY"),
-    getApiKey("PERPLEXITY_API_KEY"),
   ]);
   const embedModel = embedModelId();
 
@@ -123,11 +121,6 @@ export async function systemConfig(): Promise<SystemConfig> {
         name: "ChatGPT",
         configured: Boolean(openaiKey),
         note: openaiKey ? undefined : "Add an OpenAI key in Settings to enable",
-      },
-      {
-        name: "Perplexity",
-        configured: Boolean(perplexityKey),
-        note: perplexityKey ? undefined : "Add a Perplexity key in Settings to enable",
       },
     ],
     rank: [

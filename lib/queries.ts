@@ -94,7 +94,12 @@ export async function getTracking(courseId: number) {
   const latestRankByKw = new Map<string, (typeof ranks)[number]>();
   for (const r of ranks) if (!latestRankByKw.has(r.query)) latestRankByKw.set(r.query, r);
   const latestAiByEngine = new Map<string, (typeof aivis)[number]>();
-  for (const a of aivis) if (!latestAiByEngine.has(a.engine)) latestAiByEngine.set(a.engine, a);
+  // Perplexity is no longer a supported engine — drop any historical rows so it
+  // doesn't resurface in the tracking panel.
+  for (const a of aivis) {
+    if (a.engine === "perplexity") continue;
+    if (!latestAiByEngine.has(a.engine)) latestAiByEngine.set(a.engine, a);
+  }
 
   return {
     ranks: [...latestRankByKw.values()],

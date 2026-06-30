@@ -1,6 +1,6 @@
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type Retryable = "quota" | "overload";
+export type Retryable = "quota" | "overload";
 
 /**
  * Classify a provider error as a transient, retryable condition:
@@ -10,7 +10,7 @@ type Retryable = "quota" | "overload";
  * Returns null for non-retryable errors (auth, bad request, etc.).
  */
 function classify(msg: string): Retryable | null {
-  if (/quota|rate.?limit|\b429\b|exceeded/i.test(msg)) return "quota";
+  if (/quota|rate.?limit|\b429\b|exceeded|resource.?exhausted/i.test(msg)) return "quota";
   if (
     /high.?demand|overload|temporarily|\b503\b|\b529\b|unavailable|try again/i.test(
       msg
@@ -18,6 +18,27 @@ function classify(msg: string): Retryable | null {
   )
     return "overload";
   return null;
+}
+
+/** Classify any thrown value (reads its message) as quota / overload / null. */
+export function classifyError(e: unknown): Retryable | null {
+  return classify((e as Error)?.message ?? String(e ?? ""));
+}
+
+/**
+ * A clear, user-facing message for a quota/overload error, or null if the error
+ * is something else (so callers can fall back to the raw message). Used to turn a
+ * cryptic provider 429 into an actionable warning instead of a stuck spinner.
+ */
+export function quotaErrorMessage(e: unknown): string | null {
+  switch (classifyError(e)) {
+    case "quota":
+      return "API quota / rate limit reached. The free tier caps requests per minute — wait about a minute and try again, or add a paid key in Settings.";
+    case "overload":
+      return "The AI model is temporarily busy (high demand). Please try again in a moment.";
+    default:
+      return null;
+  }
 }
 
 /**
@@ -28,9 +49,10 @@ function classify(msg: string): Retryable | null {
  */
 export async function withQuotaRetry<T>(
   fn: () => Promise<T>,
-  opts: { retries?: number; onWait?: (ms: number) => void } = {}
+  opts: { retries?: number; maxWaitMs?: number; onWait?: (ms: number) => void } = {}
 ): Promise<T> {
   const retries = opts.retries ?? 2;
+  const maxWaitMs = opts.maxWaitMs ?? Infinity;
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn();
@@ -47,6 +69,10 @@ export async function withQuotaRetry<T>(
         // Overload: exponential backoff (2s, 5s, 11s, …) with a little jitter.
         waitMs = (2 ** attempt * 2 + 1) * 1000 + Math.floor(Math.random() * 1000);
       }
+      // Cap the wait so interactive callers fail fast instead of appearing to hang.
+      // If the capped wait is shorter than the provider's own "retry in Ns" hint,
+      // a retry would just hit the same limit — so bail out and surface the error.
+      if (waitMs > maxWaitMs) throw e;
       opts.onWait?.(waitMs);
       await sleep(waitMs);
     }

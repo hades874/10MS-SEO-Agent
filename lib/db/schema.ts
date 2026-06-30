@@ -185,7 +185,7 @@ export const aiVisibilityChecks = pgTable("ai_visibility_checks", {
     onDelete: "cascade",
   }),
   query: text("query").notNull(),
-  engine: text("engine").notNull(), // ai_overview / chatgpt / perplexity / gemini
+  engine: text("engine").notNull(), // ai_overview / chatgpt / gemini
   mentioned: boolean("mentioned").default(false),
   prominence: text("prominence"), // top / mid / mention / none
   citationUrl: text("citation_url"),

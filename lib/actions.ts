@@ -35,9 +35,19 @@ import { scoreRecord, type ScoreResult } from "./score/validate";
 import { recallExemplars, loadStyleContext, existingTitles } from "./memory/recall";
 import { parseSeedCsv } from "./memory/parseCsv";
 import { importCourses } from "./memory/importCourses";
+import { quotaErrorMessage } from "./util/throttle";
 import type { CourseInput, GeneratedCopy } from "./generate/types";
 
 type Db = ReturnType<typeof getDb>;
+
+/**
+ * Turn a thrown error into a user-facing message. Quota / "model busy" errors get a
+ * clear, actionable message (so the UI can warn instead of showing a cryptic 429 or
+ * a stuck spinner); anything else falls back to the raw message.
+ */
+function actionError(e: unknown, fallback = "Something went wrong."): string {
+  return quotaErrorMessage(e) ?? (e as Error)?.message ?? fallback;
+}
 
 /**
  * Persist one SEO record version for a course: rebuild the JSON-LD deterministically,
@@ -231,15 +241,8 @@ export async function generateForNewCourse(
       input,
     };
   } catch (e) {
-    const msg = (e as Error).message ?? "";
-    if (/high.?demand|overload|temporarily|\b503\b|\b529\b|unavailable/i.test(msg)) {
-      return {
-        ok: false,
-        error:
-          "The AI model is temporarily busy (high demand). We retried automatically — please try generating again in a moment.",
-      };
-    }
-    return { ok: false, error: msg };
+    console.error("generateForNewCourse failed:", e);
+    return { ok: false, error: actionError(e, "Generation failed") };
   }
 }
 
@@ -310,7 +313,7 @@ export async function saveCourse(
     return { ok: true, courseId: course.id, warnings };
   } catch (e) {
     console.error("saveCourse failed:", e);
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: actionError(e, "Save failed") };
   }
 }
 
@@ -369,7 +372,7 @@ export async function updateCourseSeo(
     return { ok: true, version: nextVersion, score: score.total, warnings };
   } catch (e) {
     console.error("updateCourseSeo failed:", e);
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: actionError(e, "Save failed") };
   }
 }
 
@@ -425,7 +428,8 @@ export async function keywordResearchAction(
     }
     return { ok: true, research };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    console.error("keywordResearchAction failed:", e);
+    return { ok: false, error: actionError(e, "Keyword research failed") };
   }
 }
 
@@ -446,7 +450,7 @@ export async function analyzeCompetitorsAction(
     return { ok: true, result };
   } catch (e) {
     console.error("analyzeCompetitorsAction failed:", e);
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: actionError(e, "Analysis failed") };
   }
 }
 
@@ -495,7 +499,7 @@ export async function comparePdpsAction(
     return { ok: true, comparison };
   } catch (e) {
     console.error("comparePdpsAction failed:", e);
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: actionError(e, "Comparison failed") };
   }
 }
 
@@ -529,7 +533,7 @@ export async function trackCourseAction(
     return { ok: true, result };
   } catch (e) {
     console.error("trackCourseAction failed:", e);
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: actionError(e, "Tracking failed") };
   }
 }
 

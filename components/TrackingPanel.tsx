@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 import { trackCourseAction } from "@/lib/actions";
+import { ErrorNote } from "./ErrorNote";
 import type { TrackResult } from "@/lib/track";
 
 interface StoredRank {
   query: string;
   position: number | null;
   scanned?: number;
+  pageUrl?: string | null;
+  topResults?: { position: number; url: string; host: string }[];
   checkedAt: Date | string | null;
 }
 interface StoredAivis {
@@ -39,13 +42,23 @@ export function TrackingPanel({ courseId, hasKeywords, initialRanks, initialAivi
     else setError(res.error ?? "Tracking failed");
   }
 
-  const ranks = live
-    ? live.ranks.map((r) => ({ query: r.keyword, position: r.position, scanned: r.scanned, checkedAt: new Date() }))
+  const ranks: StoredRank[] = live
+    ? live.ranks.map((r) => ({
+        query: r.keyword,
+        position: r.position,
+        scanned: r.scanned,
+        pageUrl: r.pageUrl,
+        topResults: r.topResults,
+        checkedAt: new Date(),
+      }))
     : initialRanks;
 
   // Warn immediately after a live run when every keyword returned 0 SERP results —
   // that indicates an API key issue rather than a genuine absence of ranking.
   const serpFailed = live != null && ranks.every((r) => (r.scanned ?? 1) === 0);
+  // A quota/overload error cut AI-visibility sampling short — surface it so the empty
+  // result reads as "rate limited", not "not mentioned".
+  const rateLimited = live?.rateLimited ?? false;
   const aivis = live
     ? live.aivis.engines.map((e) => ({
         engine: e.engine,
@@ -55,8 +68,14 @@ export function TrackingPanel({ courseId, hasKeywords, initialRanks, initialAivi
         sampledAt: e.configured ? new Date() : null,
         configured: e.configured,
         note: e.note,
+        rateLimited: e.rateLimited ?? false,
       }))
-    : initialAivis.map((a) => ({ ...a, configured: true, note: undefined as string | undefined }));
+    : initialAivis.map((a) => ({
+        ...a,
+        configured: true,
+        note: undefined as string | undefined,
+        rateLimited: false,
+      }));
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
@@ -74,17 +93,23 @@ export function TrackingPanel({ courseId, hasKeywords, initialRanks, initialAivi
         </button>
       </div>
       <p className="mb-3 text-xs text-gray-400">
-        Web rank checks your position in search results for each keyword via the
-        configured SERP provider (Serper or DuckDuckGo). AI visibility asks Gemini
+        Web rank checks where 10MS appears in the top 20 search results for each keyword
+        via the configured SERP provider (Serper or DuckDuckGo). AI visibility asks Gemini
         (Google-search grounded) and reports a mention rate. Takes ~10–20s.
       </p>
 
-      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      {error && <ErrorNote className="mb-3">{error}</ErrorNote>}
+      {rateLimited && (
+        <ErrorNote tone="warning" className="mb-3">
+          API quota / rate limit reached while checking AI-search visibility — results
+          may be incomplete. Wait about a minute and run it again.
+        </ErrorNote>
+      )}
       {serpFailed && (
-        <p className="mb-3 rounded bg-amber-50 px-2 py-1 text-sm text-amber-700">
+        <ErrorNote tone="warning" className="mb-3">
           SERP returned 0 results for all keywords — your API key may be invalid or the
           provider is unreachable. Check Settings.
-        </p>
+        </ErrorNote>
       )}
 
       {/* Web rank */}
@@ -95,18 +120,44 @@ export function TrackingPanel({ courseId, hasKeywords, initialRanks, initialAivi
         ) : (
           <table className="w-full text-sm">
             <tbody>
-              {ranks.map((r) => (
-                <tr key={r.query} className="border-b border-gray-100 last:border-0">
-                  <td className="py-1.5 pr-3">{r.query}</td>
-                  <td className="py-1.5 text-right">
-                    {r.position == null ? (
-                      <span className="text-gray-400">not in top results</span>
-                    ) : (
-                      <span className="font-medium">#{r.position}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {ranks.map((r) => {
+                const top = r.topResults?.[0];
+                return (
+                  <tr key={r.query} className="border-b border-gray-100 last:border-0 align-top">
+                    <td className="py-1.5 pr-3">{r.query}</td>
+                    <td className="py-1.5 text-right">
+                      {r.position != null ? (
+                        r.pageUrl ? (
+                          <a
+                            href={r.pageUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-medium text-brand-dark hover:underline"
+                            title={r.pageUrl}
+                          >
+                            #{r.position} ↗
+                          </a>
+                        ) : (
+                          <span className="font-medium text-green-700">#{r.position}</span>
+                        )
+                      ) : r.scanned === 0 ? (
+                        <span className="text-amber-700">search unavailable</span>
+                      ) : (
+                        <div>
+                          <span className="text-gray-500">
+                            not in top {r.scanned ?? 20}
+                          </span>
+                          {top && (
+                            <div className="text-xs text-gray-400">
+                              #1 is {top.host || top.url}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -124,6 +175,10 @@ export function TrackingPanel({ courseId, hasKeywords, initialRanks, initialAivi
                 <span className="capitalize">{a.engine.replace("_", " ")}</span>
                 {a.configured === false ? (
                   <span className="text-xs text-gray-400">{a.note ?? "not configured"}</span>
+                ) : a.rateLimited ? (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
+                    rate limited
+                  </span>
                 ) : a.mentioned ? (
                   <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">
                     {a.prominence === "top" ? "recommended (top)" : "mentioned"}

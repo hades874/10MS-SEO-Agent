@@ -1,9 +1,9 @@
 # SEO Agent for 10 Minute School — Build Plan
 
-> **Status:** Phases 0–4 built and verified live on real Neon DB + Google Gemini.
+> **Status:** Phases 0–5 built and verified live on real Neon DB + Google Gemini.
 > All planned phases are complete; remaining items are explicit optional scaffolds
 > (paid keyword source, GSC) that activate behind keys.
-> Last updated: 2026-06-22.
+> Last updated: 2026-06-30.
 >
 > This document is the canonical, **as-built** plan. It supersedes the original
 > approved plan (`~/.claude/plans/i-am-trying-to-rustling-volcano.md`); the
@@ -109,7 +109,8 @@ about what shipped vs. what was originally proposed.
 
 ```
 Next.js 16 (App Router, React 19) on Vercel
-├── UI: dashboard, "New course" form, SEO editor, competitor panel, tracking panel
+├── UI: dashboard, "New course" form, SEO editor, competitor panel, tracking panel,
+│       PDP comparison (/compare)
 ├── Server Actions / Route Handlers (Node runtime, Fluid Compute)
 ├── AI layer  → Vercel AI SDK v6 via lib/ai/models.ts
 │               → Google Gemini free tier (gemini-2.5-flash draft,
@@ -120,7 +121,7 @@ Next.js 16 (App Router, React 19) on Vercel
 │   ├── SERP fetch — pluggable provider (DuckDuckGo default; Serper/Brave optional)
 │   ├── AI answer engines — Gemini (Google-search grounded); ChatGPT/Perplexity stubbed
 │   ├── Google Autocomplete — keyword ideas (free, EN+BN, a–z expansion)
-│   └── Competitor page fetcher (fetch + cheerio) — on-page SEO extraction
+│   └── Competitor page fetcher (fetch + cheerio) — on-page SEO extraction + PDP comparison
 └── Scheduling → Vercel Cron (3-week re-check; cadence enforced in code, not the cron string)
 ```
 
@@ -226,7 +227,17 @@ constraints) feeds the generator.
 - Google Autocomplete suggest endpoint, EN + BN, a–z expansion, breadth = demand proxy.
 - Surfaced at `/keywords`.
 
-### 6. Rank + AI-visibility tracking (`lib/rank/`, `lib/aivis/`, `lib/serp/`, `lib/track.ts`)
+### 6. PDP comparison (`lib/pdp/`)
+Head-to-head Product Detail Page analysis. Entry point: `comparePdpsAction` in `lib/actions.ts`, surfaced at `/compare`.
+
+- `compare.ts` (`comparePdps`) — orchestrator: fetch + parse our page and up to 5 competitor pages in parallel, derive keyword gap, run AI analysis. AI failure degrades to `analysis: null`; on-page comparison always works keyless.
+- `parse.ts` (`parsePdp`) — extends the competitor `parsePage` extractor with an h1–h3 heading outline and a 1 500-char body excerpt (the two extra signals the LLM needs for content-gap analysis).
+- `keywordGap.ts` (`computeKeywordGap`) — deterministic, keyless page-derived keyword gap: 1–3-grams from competitor titles + headings that don't appear on our page, deduped and annotated with which rivals use them. Optionally enriched with Autocomplete expansion.
+- `analyze.ts` (`analyzePdpGap`) — `generateObject` with `PdpGapSchema`: on-page deficits, content gaps, keyword gaps, and a prioritized action list. Wrapped in `withQuotaRetry`.
+- `prompt.ts` — system prompt (strict grounding, white-hat-only, bilingual awareness) + `buildPdpUserPrompt` (excerpt budget shrinks per-competitor to keep the prompt cheap).
+- `types.ts` — `ParsedPdp`, `PdpSide`, `KeywordGapItem`, `PdpGapAnalysis`, `PdpComparisonResult`.
+
+### 7. Rank + AI-visibility tracking (`lib/rank/`, `lib/aivis/`, `lib/serp/`, `lib/track.ts`)
 - `lib/serp/provider.ts` — pluggable SERP (DDG default keyless; Serper/Brave via free key).
 - `lib/rank/serp.ts` — web position of the 10MS URL → `rank_checks`.
 - `lib/aivis/check.ts` — AI-search visibility via Gemini (Google-search grounded) → mention_rate
@@ -248,6 +259,7 @@ constraints) feeds the generator.
 - `/keywords` — keyword research (Google Autocomplete). ✅
 - `/import` — CSV upload to seed memory. ✅
 - `/settings` — read-only data-source/provider status dashboard (Phase 4). ✅
+- `/compare` — PDP head-to-head comparison: enter our URL + up to 5 competitor URLs + optional target keywords → on-page scoring + keyword gap + AI content-gap analysis with prioritized actions. ✅
 
 ---
 
@@ -282,6 +294,8 @@ constraints) feeds the generator.
   AI-visibility sampling, tracking panel, 3-week cron.
 - **Phase 4 — Polish** ✅ Done & verified — version history + diff, exports, `/settings` status
   dashboard, ChatGPT/Perplexity engines wired behind keys, paid-keyword + GSC scaffolds.
+- **Phase 5 — PDP comparison** ✅ Done — head-to-head page comparison at `/compare`: fetch +
+  parse + deterministic keyword gap + AI content-gap analysis (on-page half always works keyless).
 
 ### Phase 4 — as-built
 - **Version history + diff** — `updateCourseSeo` (`lib/actions.ts`) saves human edits as a new
@@ -297,6 +311,18 @@ constraints) feeds the generator.
   provider/status dashboard. Nav link in `app/layout.tsx`.
 - **ChatGPT / Perplexity AI-visibility** — wired in `lib/aivis/check.ts` (shared
   OpenAI-compatible sampler), auto-activate behind `OPENAI_API_KEY` / `PERPLEXITY_API_KEY`.
+
+### Phase 5 — as-built
+- **`lib/pdp/` module** — six-file pipeline: `compare.ts` (orchestrator) → `parse.ts` (extends
+  competitor extractor with headings + body excerpt) → `keywordGap.ts` (deterministic n-gram gap)
+  → `analyze.ts` (`generateObject` + Zod schema) → `prompt.ts` (system prompt + user prompt
+  builder). Types in `types.ts`. `MAX_COMPETITORS = 5` caps the fan-out.
+- **`comparePdpsAction`** added to `lib/actions.ts` — same `{ ok, error }` envelope; best-effort
+  AI (degrades to `analysis: null` + `aiSkippedReason` when AI is absent or fails).
+- **`/compare` route** — `app/compare/page.tsx` (client component): dynamic competitor URL list,
+  comma-delimited target keywords, calls `comparePdpsAction`, renders `PdpComparePanel`.
+- **`components/ErrorNote.tsx`** — shared inline error/warning component (used across panels).
+  Accepts `tone="error"|"warning"`. Added as a general-purpose component, not PDP-specific.
 
 ### Remaining optional scaffolds (activate behind keys; API calls not yet implemented)
 - Pluggable **paid** keyword source (`lib/keywords/provider.ts`, DataForSEO/Ahrefs) behind the
@@ -324,6 +350,9 @@ constraints) feeds the generator.
   course detail renders the inline editor + export panel, with version history hidden until a
   second version exists. The edit→save-new-version→diff flow (and `validation_scores` rows) is
   verified through the UI on a live course.
+- **Phase 5** ✅ — `/compare` route renders; `comparePdpsAction` wired in `lib/actions.ts`;
+  `lib/pdp/` pipeline type-checks clean. On-page comparison + deterministic keyword gap work
+  keyless; AI content-gap analysis activates with a Gemini key and degrades gracefully without.
 
 ---
 

@@ -15,6 +15,7 @@ export interface TrackInput {
 export interface TrackResult {
   ranks: RankResult[];
   aivis: AiVisibilityResult;
+  rateLimited: boolean; // a quota/overload error cut a tracking surface short
 }
 
 /**
@@ -73,5 +74,5 @@ export async function trackCourse(input: TrackInput): Promise<TrackResult> {
     }
   }
 
-  return { ranks, aivis };
+  return { ranks, aivis, rateLimited: aivis.rateLimited };
 }

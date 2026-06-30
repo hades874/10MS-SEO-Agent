@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { analyzeCompetitorsAction } from "@/lib/actions";
 import { ScoreBadge } from "./ScoreBadge";
+import { ErrorNote } from "./ErrorNote";
 import type { AnalyzeResult } from "@/lib/competitors/analyze";
 
 interface Props {
@@ -57,7 +58,7 @@ export function CompetitorPanel({
         </button>
       </div>
 
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {error && <ErrorNote className="mt-3">{error}</ErrorNote>}
 
       {result && (
         <div className="mt-4 overflow-x-auto">
@@ -95,10 +96,17 @@ export function CompetitorPanel({
                 {result.competitors.map((c) => (
                   <tr key={c.page.url} className="border-b border-gray-100 last:border-0">
                     <td className="py-2 pr-3">
-                      <a href={c.page.url} target="_blank" rel="noreferrer" className="text-brand-dark hover:underline">
-                        {c.competitorName}
-                      </a>
+                      <span className="font-medium text-gray-700">{c.competitorName}</span>
                       <div className="max-w-xs truncate text-xs text-gray-400">{c.page.title}</div>
+                      <a
+                        href={c.page.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block max-w-xs truncate text-xs text-brand-dark hover:underline"
+                        title={c.page.url}
+                      >
+                        {c.page.url} ↗
+                      </a>
                     </td>
                     <td className="py-2 pr-3"><ScoreBadge score={c.score.total} /></td>
                     <td className="py-2 pr-3 text-gray-600">
