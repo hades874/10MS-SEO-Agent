@@ -222,7 +222,7 @@ export async function generateForNewCourse(
       return { ok: false, error: `Invalid course input — ${firstIssue(parsed.error)}` };
     }
     raw = parsed.data;
-    const facets = deriveFacets(raw.name, raw.slug);
+    const facets = deriveFacets(raw.name, raw.slug, raw.details);
     const input: CourseInput = {
       ...raw,
       level: raw.level ?? facets.level,
@@ -286,7 +286,7 @@ export async function saveCourse(
     input = parsedInput.data;
     copy = parsedCopy.data;
     const db = getDb();
-    const facets = deriveFacets(input.name, input.slug);
+    const facets = deriveFacets(input.name, input.slug, input.details);
     const SITE_ORIGIN = process.env.SITE_ORIGIN ?? "https://10minuteschool.com";
     const slug = input.slug?.trim() || suggestSlug(facets, input.name);
 

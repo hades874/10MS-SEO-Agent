@@ -10,6 +10,7 @@ export function suggestSlug(facets: Facets, fallbackName?: string): string {
     facets.level,
     facets.year,
     facets.subject && facets.subject !== "Multiple" ? facets.subject : null,
+    facets.paper,
     facets.batchType,
   ]
     .filter(Boolean)

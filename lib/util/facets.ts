@@ -13,6 +13,7 @@ export interface Facets {
   subject: string | null; // Science / Bangla / English / ICT / Math / Economics / ...
   batchType: string | null; // Online Batch / Recorded Batch / Board Prep
   group: string | null; // Science / Commerce / Arts / All
+  paper: string | null; // 1st Paper / 2nd Paper
   isFree: boolean;
 }
 
@@ -30,8 +31,8 @@ const SUBJECTS: Array<[RegExp, string]> = [
   [/\bmanagement\b|ম্যানেজমেন্ট/i, "Management"],
 ];
 
-export function deriveFacets(name: string, slug?: string | null): Facets {
-  const hay = `${name} ${slug ?? ""}`;
+export function deriveFacets(name: string, slug?: string | null, details?: string | null): Facets {
+  const hay = `${name} ${slug ?? ""} ${details ?? ""}`;
 
   // Level
   let level: string | null = null;
@@ -72,6 +73,8 @@ export function deriveFacets(name: string, slug?: string | null): Facets {
   else if (/(online batch|অনলাইন ব্যাচ)/i.test(hay)) batchType = "Online Batch";
   else if (/(final preparation|শেষ মুহূর্ত)/i.test(hay))
     batchType = "Final Prep";
+  else if (/(master book|মাস্টার বুক)/i.test(hay))
+    batchType = "Master Book";
 
   // Group
   let group: string | null = null;
@@ -81,7 +84,12 @@ export function deriveFacets(name: string, slug?: string | null): Facets {
   else if (/(arts|humanities|মানবিক)/i.test(hay)) group = "Arts";
   else if (/(সকল বিভাগ|all group|all groups)/i.test(hay)) group = "All";
 
+  // Paper
+  let paper: string | null = null;
+  if (/(1st|first|১ম|প্রথম)\s*(paper|পত্র)/i.test(hay)) paper = "1st Paper";
+  else if (/(2nd|second|২য়|দ্বিতীয়|দ্বিতীয়)\s*(paper|পত্র)/i.test(hay)) paper = "2nd Paper";
+
   const isFree = /(free|ফ্রি|super free)/i.test(hay);
 
-  return { level, year, subject, batchType, group, isFree };
+  return { level, year, subject, batchType, group, paper, isFree };
 }
