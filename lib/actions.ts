@@ -46,7 +46,19 @@ type Db = ReturnType<typeof getDb>;
  * a stuck spinner); anything else falls back to the raw message.
  */
 function actionError(e: unknown, fallback = "Something went wrong."): string {
-  return quotaErrorMessage(e) ?? (e as Error)?.message ?? fallback;
+  const quotaMsg = quotaErrorMessage(e);
+  if (quotaMsg) return quotaMsg;
+
+  const err = e as any;
+  const pgErr = err?.code === "23505" ? err : (err?.cause?.code === "23505" ? err.cause : null);
+  if (pgErr) {
+    if (pgErr.constraint_name === "courses_slug_unique") {
+      return "A course with this slug already exists. Please choose a different slug.";
+    }
+    return "A record with this identifier already exists.";
+  }
+
+  return (e as Error)?.message ?? fallback;
 }
 
 /**
